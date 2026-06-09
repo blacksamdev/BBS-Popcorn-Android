@@ -1,6 +1,6 @@
 # BBS pOpcOrn Android 🍿
 
-**YouTube via yt-dlp + Media3 — sans pub, sans compte**
+**YouTube via yt-dlp + Media3 **
 
 BBS pOpcOrn Android est le port mobile de [BBS pOpcOrn](https://github.com/blacksamdev/BBS-Popcorn).  
 Il résout les streams YouTube via yt-dlp (sans publicité), les joue via Media3/ExoPlayer,  

@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.BBSPopcorn" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">#D4A843</item>
+        <item name="colorPrimaryVariant">#0A0A0A</item>
+        <item name="colorOnPrimary">#0A0A0A</item>
+        <item name="colorSurface">#0A0A0A</item>
+        <item name="android:windowBackground">#0A0A0A</item>
+    </style>
+</resources>

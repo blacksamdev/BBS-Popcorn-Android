@@ -14,19 +14,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Restore debug keystore
+        env:
+          DEBUG_KEYSTORE_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}
+        run: |
+          mkdir -p $HOME/.bbs-keys
+          echo "$DEBUG_KEYSTORE_B64" | base64 -d > $HOME/.bbs-keys/bbs-debug.keystore
+
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
       - name: Build debug APK
+        env:
+          BBS_KEYSTORE_PATH: /home/runner/.bbs-keys/bbs-debug.keystore
+          BBS_KEYSTORE_PASSWORD: ${{ secrets.DEBUG_KEYSTORE_PASSWORD }}
+          BBS_KEY_ALIAS: ${{ secrets.DEBUG_KEY_ALIAS }}
         run: ./gradlew assembleDebug
 
       - name: Upload APK

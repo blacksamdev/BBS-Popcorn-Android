@@ -30,6 +30,24 @@ android {
         }
     }
 
+    signingConfigs {
+        // Keystore debug fixe : signature identique entre tous les builds
+        // (local et CI) → mises à jour installables sans désinstaller.
+        // En CI : le keystore est restauré depuis les secrets GitHub.
+        // En local : place le keystore dans ~/.bbs-keys/bbs-debug.keystore
+        bbsDebug {
+            def ksPath = System.getenv("BBS_KEYSTORE_PATH")
+                ?: "${System.getProperty('user.home')}/.bbs-keys/bbs-debug.keystore"
+            def ksFile = file(ksPath)
+            if (ksFile.exists()) {
+                storeFile ksFile
+                storePassword System.getenv("BBS_KEYSTORE_PASSWORD") ?: "bbspopcorn"
+                keyAlias System.getenv("BBS_KEY_ALIAS") ?: "bbsdebug"
+                keyPassword System.getenv("BBS_KEYSTORE_PASSWORD") ?: "bbspopcorn"
+            }
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
@@ -38,16 +56,21 @@ android {
         debug {
             applicationIdSuffix ".debug"
             versionNameSuffix "-debug"
+            def ksPath = System.getenv("BBS_KEYSTORE_PATH")
+                ?: "${System.getProperty('user.home')}/.bbs-keys/bbs-debug.keystore"
+            if (file(ksPath).exists()) {
+                signingConfig signingConfigs.bbsDebug
+            }
         }
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
     }
 
     kotlinOptions {
-        jvmTarget = '17'
+        jvmTarget = '21'
     }
 
     buildFeatures {

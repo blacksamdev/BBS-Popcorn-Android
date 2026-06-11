@@ -1,14 +1,14 @@
 """
 resolver.py — BBS Popcorn Android
-Résolution et normalisation des URLs YouTube via yt-dlp.
-Extrait de player.py (BBS Popcorn Linux).
+Résolution et normalisation des URLs YouTube via yt-dlp (API Python).
+Version Chaquopy : yt-dlp importé comme module, pas de subprocess.
 Aucune dépendance GTK/UI.
 """
 
-import subprocess
-import json
 import logging
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+
+import yt_dlp
 
 log = logging.getLogger("bbs.resolver")
 
@@ -17,7 +17,7 @@ def prepare_url(url: str) -> str:
     """
     Normalise une URL YouTube en supprimant les paramètres de tracking.
     Conserve uniquement v= (vidéo) et list= (playlist).
-    Extrait de MpvPlayer._prepare_url() — player.py.
+    Extrait de MpvPlayer._prepare_url() — player.py (BBS Popcorn Linux).
     """
     try:
         parsed = urlparse(url)
@@ -49,79 +49,127 @@ def prepare_url(url: str) -> str:
     return url
 
 
-def fetch_title(url: str, timeout: int = 30) -> str | None:
+def fetch_title(url: str) -> str | None:
     """
-    Récupère le titre d'une vidéo YouTube via yt-dlp.
+    Récupère le titre d'une vidéo YouTube via l'API yt-dlp.
     Retourne le titre ou None en cas d'échec.
-    Extrait de MpvPlayer._fetch_title_async() — player.py.
     """
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "skip_download": True,
+        "extract_flat": False,
+    }
     try:
         log.debug(f"fetch_title: start for {url}")
-        proc = subprocess.run(
-            [
-                "yt-dlp",
-                "--no-playlist",
-                "--skip-download",
-                "--dump-single-json",
-                url,
-            ],
-            capture_output=True,
-            timeout=timeout,
-        )
-        if proc.returncode == 0 and proc.stdout.strip():
-            info = json.loads(proc.stdout.decode())
-            title = info.get("title", "").strip()
-            log.debug(f"fetch_title: title='{title}'")
-            return title or None
-        else:
-            log.debug(f"fetch_title: échec returncode={proc.returncode}")
-    except subprocess.TimeoutExpired:
-        log.debug("fetch_title: timeout")
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+        title = (info or {}).get("title", "").strip()
+        log.debug(f"fetch_title: title='{title}'")
+        return title or None
     except Exception as exc:
         log.debug(f"fetch_title: erreur: {exc}")
     return None
 
 
-def resolve_stream_url(url: str, quality: str = "1080", timeout: int = 30) -> str | None:
+def resolve_stream_url(url: str, quality: str = "1080") -> str | None:
     """
-    Résout l'URL de stream direct via yt-dlp (sans pub).
+    Résout l'URL de stream direct via l'API yt-dlp (sans pub).
     Retourne l'URL du flux ou None en cas d'échec.
     quality : '2160', '1440', '1080', '720', '480'
+
+    Note Android : pas de ffmpeg disponible sous Chaquopy, donc pas de
+    merge audio+vidéo possible. On force un format combiné (un seul flux
+    contenant audio et vidéo) lisible directement par Media3.
     """
-    format_selector = _build_format_selector(quality)
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "format": _build_format_selector(quality),
+        "skip_download": True,
+    }
     try:
         log.debug(f"resolve_stream_url: resolving {url} @ {quality}p")
-        proc = subprocess.run(
-            [
-                "yt-dlp",
-                "--no-playlist",
-                "-f", format_selector,
-                "-g",
-                url,
-            ],
-            capture_output=True,
-            timeout=timeout,
-        )
-        if proc.returncode == 0 and proc.stdout.strip():
-            stream_url = proc.stdout.decode().strip().splitlines()[0]
-            log.debug("resolve_stream_url: OK")
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+
+        if not info:
+            return None
+
+        # Cas standard : URL directe dans info
+        stream_url = info.get("url")
+        if stream_url:
+            log.debug("resolve_stream_url: OK (direct)")
             return stream_url
-        else:
-            log.debug(f"resolve_stream_url: échec returncode={proc.returncode}")
-    except subprocess.TimeoutExpired:
-        log.debug("resolve_stream_url: timeout")
+
+        # Cas fallback : chercher dans requested_formats / formats
+        formats = info.get("formats") or []
+        for fmt in reversed(formats):
+            if fmt.get("url") and fmt.get("acodec") != "none" and fmt.get("vcodec") != "none":
+                log.debug("resolve_stream_url: OK (fallback formats)")
+                return fmt["url"]
+
+        log.debug("resolve_stream_url: aucun format combiné trouvé")
     except Exception as exc:
         log.debug(f"resolve_stream_url: erreur: {exc}")
     return None
 
 
-def _build_format_selector(quality: str) -> str:
-    """Construit le sélecteur de format yt-dlp selon la qualité cible."""
-    quality_map = {
-        "2160": "bestvideo[height<=2160]+bestaudio/best[height<=2160]",
-        "1440": "bestvideo[height<=1440]+bestaudio/best[height<=1440]",
-        "1080": "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
-        "720":  "bestvideo[height<=720]+bestaudio/best[height<=720]",
-        "480":  "bestvideo[height<=480]+bestaudio/best[height<=480]",
+def fetch_info(url: str, quality: str = "1080") -> dict | None:
+    """
+    Récupère titre + URL stream + miniature + durée en UN SEUL appel yt-dlp.
+    Plus efficace que fetch_title() + resolve_stream_url() séparés.
+    Retourne un dict {'title', 'stream_url', 'thumbnail', 'duration_s'}
+    ou None en cas d'échec.
+    """
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "format": _build_format_selector(quality),
+        "skip_download": True,
     }
-    return quality_map.get(quality, quality_map["1080"])
+    try:
+        log.debug(f"fetch_info: start for {url}")
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+
+        if not info:
+            return None
+
+        stream_url = info.get("url")
+        if not stream_url:
+            formats = info.get("formats") or []
+            for fmt in reversed(formats):
+                if fmt.get("url") and fmt.get("acodec") != "none" and fmt.get("vcodec") != "none":
+                    stream_url = fmt["url"]
+                    break
+
+        if not stream_url:
+            log.debug("fetch_info: aucun stream exploitable")
+            return None
+
+        return {
+            "title": (info.get("title") or "").strip(),
+            "stream_url": stream_url,
+            "thumbnail": info.get("thumbnail"),
+            "duration_s": info.get("duration") or 0,
+        }
+    except Exception as exc:
+        log.debug(f"fetch_info: erreur: {exc}")
+    return None
+
+
+def _build_format_selector(quality: str) -> str:
+    """
+    Construit le sélecteur de format yt-dlp selon la qualité cible.
+
+    Android/Chaquopy : pas de ffmpeg → pas de merge possible.
+    On exige un format combiné (vcodec ET acodec dans le même flux).
+    YouTube fournit ces formats en MP4 jusqu'à 720p, et en HLS (m3u8)
+    pour les résolutions supérieures — Media3 lit les deux nativement.
+    """
+    q = quality if quality in ("2160", "1440", "1080", "720", "480") else "1080"
+    return f"best[height<={q}][vcodec!=none][acodec!=none]/best[height<={q}]"

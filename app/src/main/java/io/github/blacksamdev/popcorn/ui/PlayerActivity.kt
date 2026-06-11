@@ -3,6 +3,7 @@ package io.github.blacksamdev.popcorn.ui
 import android.os.Bundle
 import android.view.WindowManager
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -20,6 +21,7 @@ import kotlinx.coroutines.launch
  * - Lecture locale via Media3/ExoPlayer (BbsPlayer)
  * - Skip automatique des segments SponsorBlock
  * - Si une session Chromecast est active : envoi du flux vers la TV
+ * - Bouton/geste retour : arrêt propre de la lecture et retour à l'UI
  */
 class PlayerActivity : AppCompatActivity() {
 
@@ -30,85 +32,93 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private lateinit var binding: ActivityPlayerBinding
-        private var player: BbsPlayer? = null
-            private var castManager: CastManager? = null
+    private var player: BbsPlayer? = null
+    private var castManager: CastManager? = null
 
-                override fun onCreate(savedInstanceState: Bundle?) {
-                    super.onCreate(savedInstanceState)
-                    binding = ActivityPlayerBinding.inflate(layoutInflater)
-                    setContentView(binding.root)
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        binding = ActivityPlayerBinding.inflate(layoutInflater)
+        setContentView(binding.root)
 
-                    // Garder l'écran allumé pendant la lecture
-                    window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                    hideSystemBars()
+        // Garder l'écran allumé pendant la lecture
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        hideSystemBars()
 
-                    val streamUrl = intent.getStringExtra(EXTRA_STREAM_URL)
-                    val title = intent.getStringExtra(EXTRA_TITLE) ?: ""
-                    val sourceUrl = intent.getStringExtra(EXTRA_SOURCE_URL) ?: ""
+        // Retour (bouton ou geste) : arrêt propre et fermeture
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                player?.stop()
+                finish()
+            }
+        })
 
-                    if (streamUrl.isNullOrEmpty()) {
-                        Toast.makeText(this, "Flux invalide", Toast.LENGTH_SHORT).show()
-                        finish()
-                        return
-                    }
+        val streamUrl = intent.getStringExtra(EXTRA_STREAM_URL)
+        val title = intent.getStringExtra(EXTRA_TITLE) ?: ""
+        val sourceUrl = intent.getStringExtra(EXTRA_SOURCE_URL) ?: ""
 
-                    castManager = CastManager(this).also { it.register() }
+        if (streamUrl.isNullOrEmpty()) {
+            Toast.makeText(this, "Flux invalide", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
 
-                    // Session Chromecast active → on caste, on ne lit pas en local
-                    if (castManager?.isConnected == true) {
-                        castManager?.loadMedia(streamUrl, title)
-                        Toast.makeText(this, "Lecture sur Chromecast", Toast.LENGTH_SHORT).show()
-                        finish()
-                        return
-                    }
+        castManager = CastManager(this).also { it.register() }
 
-                    // Lecture locale
-                    player = BbsPlayer(this, lifecycleScope).also {
-                        binding.playerView.player = it.exoPlayer
-                    }
+        // Session Chromecast active → on caste, on ne lit pas en local
+        if (castManager?.isConnected == true) {
+            castManager?.loadMedia(streamUrl, title)
+            Toast.makeText(this, "Lecture sur Chromecast", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
 
-                    // SponsorBlock : récupérer les segments puis lancer la lecture
-                    lifecycleScope.launch {
-                        val segments = if (sourceUrl.isNotEmpty()) {
-                            SponsorBridge.getSegments(sourceUrl)
-                        } else {
-                            emptyList()
-                        }
-                        player?.play(streamUrl, segments)
-                        if (segments.isNotEmpty()) {
-                            Toast.makeText(
-                                this@PlayerActivity,
-                                "SponsorBlock : ${segments.size} segment(s) à skipper",
-                                           Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    }
-                }
+        // Lecture locale
+        player = BbsPlayer(this, lifecycleScope).also {
+            binding.playerView.player = it.exoPlayer
+        }
 
-                private fun hideSystemBars() {
-                    WindowCompat.setDecorFitsSystemWindows(window, false)
-                    WindowInsetsControllerCompat(window, binding.root).apply {
-                        hide(WindowInsetsCompat.Type.systemBars())
-                        systemBarsBehavior =
-                        WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                    }
-                }
+        // SponsorBlock : récupérer les segments puis lancer la lecture
+        lifecycleScope.launch {
+            val segments = if (sourceUrl.isNotEmpty()) {
+                SponsorBridge.getSegments(sourceUrl)
+            } else {
+                emptyList()
+            }
+            player?.play(streamUrl, segments)
+            if (segments.isNotEmpty()) {
+                Toast.makeText(
+                    this@PlayerActivity,
+                    "SponsorBlock : ${segments.size} segment(s) à skipper",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
 
-                override fun onPause() {
-                    super.onPause()
-                    player?.pause()
-                }
+    private fun hideSystemBars() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowInsetsControllerCompat(window, binding.root).apply {
+            hide(WindowInsetsCompat.Type.systemBars())
+            systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+    }
 
-                override fun onResume() {
-                    super.onResume()
-                    player?.resume()
-                }
+    override fun onPause() {
+        super.onPause()
+        player?.pause()
+    }
 
-                override fun onDestroy() {
-                    super.onDestroy()
-                    player?.release()
-                    player = null
-                    castManager?.unregister()
-                    castManager = null
-                }
+    override fun onResume() {
+        super.onResume()
+        player?.resume()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        player?.release()
+        player = null
+        castManager?.unregister()
+        castManager = null
+    }
 }

@@ -15,6 +15,7 @@ import com.google.android.gms.cast.framework.media.RemoteMediaClient
  * Gère :
  * - Détection de session Cast active
  * - Envoi du stream URL vers le Chromecast
+ * - Détection du type de flux (HLS vs MP4) pour le Default Media Receiver
  * - Callbacks connect/disconnect
  */
 class CastManager(context: Context) {
@@ -70,6 +71,21 @@ class CastManager(context: Context) {
     val isConnected: Boolean get() = castSession?.isConnected == true
 
     /**
+     * Détecte le type MIME du flux selon son URL.
+     * - HLS (m3u8) : résolutions > 720p chez YouTube
+     * - MP4 : formats combinés <= 720p
+     */
+    private fun detectContentType(streamUrl: String): String {
+        return when {
+            streamUrl.contains(".m3u8") ||
+            streamUrl.contains("/manifest/hls") ||
+            streamUrl.contains("hls_playlist") -> "application/x-mpegurl"
+            streamUrl.contains(".webm") -> "video/webm"
+            else -> "video/mp4"
+        }
+    }
+
+    /**
      * Envoie un stream URL vers le Chromecast connecté.
      * streamUrl : URL directe résolue par YtdlpBridge
      * title     : titre de la vidéo (affiché sur la TV)
@@ -78,13 +94,15 @@ class CastManager(context: Context) {
         val session = castSession ?: return
         val remoteClient: RemoteMediaClient = session.remoteMediaClient ?: return
 
+        val contentType = detectContentType(streamUrl)
+
         val metadata = MediaMetadata(MediaMetadata.MEDIA_TYPE_MOVIE).apply {
             putString(MediaMetadata.KEY_TITLE, title)
         }
 
         val mediaInfo = MediaInfo.Builder(streamUrl)
             .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
-            .setContentType("video/mp4")
+            .setContentType(contentType)
             .setMetadata(metadata)
             .build()
 

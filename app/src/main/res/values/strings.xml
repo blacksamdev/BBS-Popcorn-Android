@@ -1,3 +1,6 @@
 <resources>
     <string name="app_name">BBS Popcorn</string>
+    <string name="main_subtitle">YouTube sans pub — yt-dlp + Media3</string>
+    <string name="main_url_hint">URL YouTube</string>
+    <string name="main_play">Lecture</string>
 </resources>

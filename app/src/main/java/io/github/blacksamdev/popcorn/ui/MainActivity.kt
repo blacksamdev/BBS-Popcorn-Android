@@ -14,6 +14,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.google.android.gms.cast.framework.CastButtonFactory
 import com.google.android.gms.cast.framework.CastContext
+import io.github.blacksamdev.popcorn.R
+import io.github.blacksamdev.popcorn.bridge.HistoryBridge
 import io.github.blacksamdev.popcorn.bridge.YtdlpBridge
 import io.github.blacksamdev.popcorn.databinding.ActivityMainBinding
 import kotlinx.coroutines.launch
@@ -49,6 +51,7 @@ class MainActivity : AppCompatActivity() {
 
         // Init Chaquopy (une seule fois pour toute l'app)
         YtdlpBridge.init(applicationContext)
+        HistoryBridge.init(applicationContext)
 
         // Init Cast SDK
         CastContext.getSharedInstance(applicationContext)
@@ -56,10 +59,15 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Bouton Cast dans la barre BBS
+        // Bouton Cast dans la barre pOpcOrn
         CastButtonFactory.setUpMediaRouteButton(
             applicationContext, binding.mediaRouteButton
         )
+
+        // Bouton historique
+        binding.btnHistory.setOnClickListener {
+            startActivity(Intent(this, HistoryActivity::class.java))
+        }
 
         setupWebView()
 
@@ -209,11 +217,14 @@ class MainActivity : AppCompatActivity() {
             if (info == null) {
                 Toast.makeText(
                     this@MainActivity,
-                    "Impossible de résoudre cette vidéo",
+                    getString(R.string.main_resolve_error),
                     Toast.LENGTH_LONG
                 ).show()
                 return@launch
             }
+
+            // Historique : enregistrer la lecture
+            HistoryBridge.add(cleanUrl, info.title)
 
             val playerIntent = Intent(this@MainActivity, PlayerActivity::class.java).apply {
                 putExtra(PlayerActivity.EXTRA_STREAM_URL, info.streamUrl)

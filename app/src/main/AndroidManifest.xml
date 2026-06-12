@@ -40,6 +40,10 @@
             android:screenOrientation="landscape"
             android:configChanges="orientation|screenSize|keyboardHidden" />
 
-        </application>
+        <activity
+            android:name=".ui.HistoryActivity"
+            android:screenOrientation="portrait" />
 
-    </manifest>
+    </application>
+
+</manifest>

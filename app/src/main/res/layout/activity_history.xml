@@ -6,66 +6,56 @@
     android:layout_height="match_parent"
     android:background="@color/popcorn_slate">
 
-    <!-- Barre pOpcOrn : icône + titre + historique + Cast -->
+    <!-- Barre : retour + titre + vider -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/topBar"
         android:layout_width="0dp"
         android:layout_height="48dp"
-        android:background="@color/popcorn_slate"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
 
-        <ImageView
-            android:id="@+id/imageLogo"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:layout_marginStart="12dp"
-            android:contentDescription="@string/app_name"
-            android:src="@mipmap/ic_launcher"
+        <ImageButton
+            android:id="@+id/btnBack"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/history_back"
+            android:src="@android:drawable/ic_menu_revert"
+            app:tint="@color/popcorn_cream"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
 
         <TextView
-            android:id="@+id/textTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
-            android:text="@string/app_name"
+            android:layout_marginStart="8dp"
+            android:text="@string/history_title"
             android:textColor="@color/popcorn_red"
             android:textSize="18sp"
             android:textStyle="bold"
             app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintStart_toEndOf="@id/imageLogo"
+            app:layout_constraintStart_toEndOf="@id/btnBack"
             app:layout_constraintTop_toTopOf="parent" />
 
         <ImageButton
-            android:id="@+id/btnHistory"
+            android:id="@+id/btnClear"
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/history_title"
-            android:src="@android:drawable/ic_menu_recent_history"
+            android:contentDescription="@string/history_clear_title"
+            android:src="@android:drawable/ic_menu_delete"
             app:tint="@color/popcorn_cream"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toStartOf="@id/mediaRouteButton"
-            app:layout_constraintTop_toTopOf="parent" />
-
-        <androidx.mediarouter.app.MediaRouteButton
-            android:id="@+id/mediaRouteButton"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:mediaRouteTypes="user"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
-    <!-- WebView YouTube -->
-    <WebView
-        android:id="@+id/webView"
+    <!-- Liste -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerHistory"
         android:layout_width="0dp"
         android:layout_height="0dp"
         app:layout_constraintBottom_toBottomOf="parent"
@@ -73,7 +63,21 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/topBar" />
 
-    <!-- Overlay de chargement (résolution yt-dlp en cours) -->
+    <!-- État vide -->
+    <TextView
+        android:id="@+id/textEmpty"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/history_empty"
+        android:textColor="@color/popcorn_beige"
+        android:textSize="14sp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- Overlay de chargement -->
     <FrameLayout
         android:id="@+id/loadingOverlay"
         android:layout_width="0dp"
@@ -87,27 +91,11 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
 
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+        <ProgressBar
+            android:layout_width="48dp"
+            android:layout_height="48dp"
             android:layout_gravity="center"
-            android:gravity="center"
-            android:orientation="vertical">
-
-            <ProgressBar
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:indeterminateTint="@color/popcorn_red" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:text="@string/main_resolving"
-                android:textColor="@color/popcorn_cream"
-                android:textSize="14sp" />
-
-        </LinearLayout>
+            android:indeterminateTint="@color/popcorn_red" />
 
     </FrameLayout>
 

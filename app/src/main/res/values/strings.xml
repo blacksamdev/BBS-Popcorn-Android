@@ -4,4 +4,10 @@
     <string name="main_url_hint">URL YouTube</string>
     <string name="main_play">Lecture</string>
     <string name="main_resolving">Résolution du flux…</string>
+    <string name="main_resolve_error">Impossible de résoudre cette vidéo</string>
+    <string name="history_title">Historique</string>
+    <string name="history_back">Retour</string>
+    <string name="history_empty">Aucune lecture pour l\'instant</string>
+    <string name="history_clear_title">Vider l\'historique</string>
+    <string name="history_clear_message">Supprimer toutes les entrées de l\'historique ?</string>
 </resources>

@@ -2,6 +2,9 @@
 sponsorblock.py — BBS Popcorn Android
 Récupération des segments SponsorBlock via API REST publique.
 Aucune dépendance GTK/UI — portable desktop → Android.
+
+Interface Android : get_segments_json() retourne du JSON brut,
+parsé côté Kotlin (frontière de types propre entre les deux langages).
 """
 
 import hashlib
@@ -39,7 +42,7 @@ def get_segments(
         [{"category": "sponsor", "start": 12.5, "end": 45.0}, ...]
     Retourne [] si aucun segment ou erreur.
 
-    Utilise le hash partiel (8 premiers chars SHA256) pour la confidentialité.
+    Utilise le hash partiel (4 premiers chars SHA256) pour la confidentialité.
     """
     if categories is None:
         categories = DEFAULT_CATEGORIES
@@ -47,8 +50,8 @@ def get_segments(
     if not video_id:
         return []
 
-    hash_prefix = hashlib.sha256(video_id.encode()).hexdigest()[:8]
-    cats_param = "&".join(f"categories[]={c}" for c in categories)
+    hash_prefix = hashlib.sha256(video_id.encode()).hexdigest()[:4]
+    cats_param = "&".join(f"category={c}" for c in categories)
     url = f"{SPONSORBLOCK_API}/skipSegments/{hash_prefix}?{cats_param}"
 
     try:
@@ -86,6 +89,18 @@ def get_segments(
         log.debug(f"sponsorblock: erreur: {exc}")
 
     return []
+
+
+def get_segments_json(video_id: str) -> str:
+    """
+    Interface Android/Chaquopy : retourne les segments en JSON brut.
+    Toujours une string JSON valide, '[]' en cas d'échec.
+    """
+    try:
+        return json.dumps(get_segments(video_id))
+    except Exception as exc:
+        log.debug(f"get_segments_json: erreur: {exc}")
+        return "[]"
 
 
 def extract_video_id(url: str) -> Optional[str]:

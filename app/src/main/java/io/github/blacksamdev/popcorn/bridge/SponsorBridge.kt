@@ -3,12 +3,13 @@ package io.github.blacksamdev.popcorn.bridge
 import com.chaquo.python.Python
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 
 /**
  * SponsorBridge — pont Kotlin → Python (sponsorblock.py via Chaquopy).
  *
- * Retourne les segments sous forme de liste de SponsorSegment,
- * prêts à être injectés dans Media3 (ClippingMediaSource ou MediaItem).
+ * Python retourne du JSON brut (string), parsé ici avec org.json :
+ * frontière de types propre, aucune manipulation de PyObject complexe.
  */
 object SponsorBridge {
 
@@ -29,27 +30,24 @@ object SponsorBridge {
     suspend fun getSegments(url: String): List<SponsorSegment> =
         withContext(Dispatchers.IO) {
             try {
-                // Extraire le video_id depuis l'URL
                 val videoId = module.callAttr("extract_video_id", url)?.toString()
                     ?: return@withContext emptyList()
 
-                val pyList = module.callAttr("get_segments", videoId)
+                val jsonStr = module.callAttr("get_segments_json", videoId)
+                    ?.toString() ?: "[]"
+
+                val arr = JSONArray(jsonStr)
                 val result = mutableListOf<SponsorSegment>()
 
-                for (i in 0 until pyList.asList().size) {
-                    val seg = pyList.asList()[i].asMap()
-                    val category = seg[Python.getInstance()
-                        .builtins.callAttr("str", "category")]?.toString() ?: continue
-                    val start = seg[Python.getInstance()
-                        .builtins.callAttr("str", "start")]?.toDouble() ?: continue
-                    val end = seg[Python.getInstance()
-                        .builtins.callAttr("str", "end")]?.toDouble() ?: continue
-
-                    result.add(SponsorSegment(
-                        category = category,
-                        startMs = (start * 1000).toLong(),
-                        endMs = (end * 1000).toLong(),
-                    ))
+                for (i in 0 until arr.length()) {
+                    val seg = arr.getJSONObject(i)
+                    result.add(
+                        SponsorSegment(
+                            category = seg.getString("category"),
+                            startMs = (seg.getDouble("start") * 1000).toLong(),
+                            endMs = (seg.getDouble("end") * 1000).toLong(),
+                        )
+                    )
                 }
                 result
             } catch (e: Exception) {

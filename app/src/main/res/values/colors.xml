@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Palette pOpcOrn — extraite de io.github.blacksamdev.Popcorn.svg -->
+    <color name="popcorn_slate">#22262B</color>       <!-- fond ardoise sombre -->
+    <color name="popcorn_red">#E11D2E</color>          <!-- rouge cinéma (accent) -->
+    <color name="popcorn_cream">#FFF8DF</color>        <!-- crème popcorn (texte) -->
+    <color name="popcorn_beige">#D9D4C7</color>        <!-- beige (texte secondaire) -->
+    <color name="popcorn_white">#FFFFFF</color>
+    <color name="popcorn_slate_overlay">#CC22262B</color> <!-- overlay 80% -->
+</resources>

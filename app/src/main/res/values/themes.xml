@@ -1,9 +1,13 @@
 <resources>
     <style name="Theme.BBSPopcorn" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <item name="colorPrimary">#D4A843</item>
-        <item name="colorPrimaryVariant">#0A0A0A</item>
-        <item name="colorOnPrimary">#0A0A0A</item>
-        <item name="colorSurface">#0A0A0A</item>
-        <item name="android:windowBackground">#0A0A0A</item>
+        <item name="colorPrimary">@color/popcorn_red</item>
+        <item name="colorPrimaryVariant">@color/popcorn_slate</item>
+        <item name="colorOnPrimary">@color/popcorn_cream</item>
+        <item name="colorSecondary">@color/popcorn_cream</item>
+        <item name="colorSurface">@color/popcorn_slate</item>
+        <item name="colorOnSurface">@color/popcorn_cream</item>
+        <item name="android:windowBackground">@color/popcorn_slate</item>
+        <item name="android:statusBarColor">@color/popcorn_slate</item>
+        <item name="android:navigationBarColor">@color/popcorn_slate</item>
     </style>
 </resources>

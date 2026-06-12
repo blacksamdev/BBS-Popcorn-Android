@@ -6,7 +6,7 @@
     android:layout_height="match_parent"
     android:background="@color/popcorn_slate">
 
-    <!-- Barre pOpcOrn : icône + titre + historique + Cast -->
+    <!-- Barre pOpcOrn : icône + titre + qualité + historique + Cast -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/topBar"
         android:layout_width="0dp"
@@ -38,6 +38,18 @@
             android:textStyle="bold"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintStart_toEndOf="@id/imageLogo"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <ImageButton
+            android:id="@+id/btnQuality"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/quality_title"
+            android:src="@android:drawable/ic_menu_preferences"
+            app:tint="@color/popcorn_cream"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toStartOf="@id/btnHistory"
             app:layout_constraintTop_toTopOf="parent" />
 
         <ImageButton

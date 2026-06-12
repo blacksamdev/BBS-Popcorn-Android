@@ -1,6 +1,7 @@
 package io.github.blacksamdev.popcorn.bridge
 
 import android.content.Context
+import android.webkit.CookieManager
 import com.chaquo.python.PyObject
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
@@ -10,6 +11,10 @@ import kotlinx.coroutines.withContext
 /**
  * YtdlpBridge — pont Kotlin → Python (resolver.py via Chaquopy).
  * Toutes les opérations sont suspendantes (Dispatchers.IO).
+ *
+ * Cookies : le header Cookie de la WebView est transmis à yt-dlp pour
+ * débloquer les vidéos avec restriction d'âge (si l'utilisateur est
+ * connecté à son compte dans la WebView).
  */
 object YtdlpBridge {
 
@@ -31,6 +36,18 @@ object YtdlpBridge {
 
     private val resolver by lazy {
         Python.getInstance().getModule("resolver")
+    }
+
+    /**
+     * Header Cookie de la WebView pour youtube.com, null si aucun.
+     */
+    private fun webViewCookies(): String? {
+        return try {
+            CookieManager.getInstance().getCookie("https://m.youtube.com")
+                ?.takeIf { it.isNotBlank() }
+        } catch (e: Exception) {
+            null
+        }
     }
 
     /**
@@ -62,41 +79,44 @@ object YtdlpBridge {
      * Retourne null si résolution impossible.
      */
     suspend fun resolveStreamUrl(url: String, quality: String = "1080"): String? =
-    withContext(Dispatchers.IO) {
-        try {
-            resolver.callAttr("resolve_stream_url", url, quality)?.toString()
-        } catch (e: Exception) {
-            null
+        withContext(Dispatchers.IO) {
+            try {
+                resolver.callAttr(
+                    "resolve_stream_url", url, quality, webViewCookies()
+                )?.toString()
+            } catch (e: Exception) {
+                null
+            }
         }
-    }
 
     /**
      * Récupère titre + stream + miniature + durée en UN SEUL appel yt-dlp.
-     * À privilégier sur fetchTitle() + resolveStreamUrl() séparés.
+     * Les cookies WebView sont transmis automatiquement (vidéos restreintes).
      * Retourne null si résolution impossible.
      */
     suspend fun fetchInfo(url: String, quality: String = "1080"): VideoInfo? =
-    withContext(Dispatchers.IO) {
-        try {
-            val result: PyObject = resolver.callAttr("fetch_info", url, quality)
-            ?: return@withContext null
+        withContext(Dispatchers.IO) {
+            try {
+                val result: PyObject = resolver.callAttr(
+                    "fetch_info", url, quality, webViewCookies()
+                ) ?: return@withContext null
 
-            val map = result.asMap()
+                val map = result.asMap()
 
-            val streamUrl = map[PyObject.fromJava("stream_url")]?.toString()
-            ?: return@withContext null
-            val title = map[PyObject.fromJava("title")]?.toString() ?: ""
-            val thumbnail = map[PyObject.fromJava("thumbnail")]?.toString()
-            val duration = map[PyObject.fromJava("duration_s")]?.toLong() ?: 0L
+                val streamUrl = map[PyObject.fromJava("stream_url")]?.toString()
+                    ?: return@withContext null
+                val title = map[PyObject.fromJava("title")]?.toString() ?: ""
+                val thumbnail = map[PyObject.fromJava("thumbnail")]?.toString()
+                val duration = map[PyObject.fromJava("duration_s")]?.toLong() ?: 0L
 
-            VideoInfo(
-                title = title,
-                streamUrl = streamUrl,
-                thumbnailUrl = thumbnail,
-                durationS = duration,
-            )
-        } catch (e: Exception) {
-            null
+                VideoInfo(
+                    title = title,
+                    streamUrl = streamUrl,
+                    thumbnailUrl = thumbnail,
+                    durationS = duration,
+                )
+            } catch (e: Exception) {
+                null
+            }
         }
-    }
 }

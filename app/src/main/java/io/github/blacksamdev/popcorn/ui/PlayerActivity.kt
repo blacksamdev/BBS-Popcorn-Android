@@ -9,16 +9,19 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
+import io.github.blacksamdev.popcorn.bridge.ResumeBridge
 import io.github.blacksamdev.popcorn.bridge.SponsorBridge
 import io.github.blacksamdev.popcorn.databinding.ActivityPlayerBinding
 import io.github.blacksamdev.popcorn.player.BbsPlayer
 import io.github.blacksamdev.popcorn.player.CastManager
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 /**
  * PlayerActivity — écran de lecture BBS Popcorn Android.
  *
  * - Lecture locale via Media3/ExoPlayer (BbsPlayer)
+ * - Reprise de lecture (resume_store via ResumeBridge)
  * - Skip automatique des segments SponsorBlock
  * - Si une session Chromecast est active : envoi du flux vers la TV
  * - Bouton/geste retour : arrêt propre de la lecture et retour à l'UI
@@ -34,6 +37,7 @@ class PlayerActivity : AppCompatActivity() {
     private lateinit var binding: ActivityPlayerBinding
     private var player: BbsPlayer? = null
     private var castManager: CastManager? = null
+    private var sourceUrl: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -44,9 +48,10 @@ class PlayerActivity : AppCompatActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         hideSystemBars()
 
-        // Retour (bouton ou geste) : arrêt propre et fermeture
+        // Retour (bouton ou geste) : sauvegarde + arrêt propre
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
+                savePosition()
                 player?.stop()
                 finish()
             }
@@ -54,7 +59,7 @@ class PlayerActivity : AppCompatActivity() {
 
         val streamUrl = intent.getStringExtra(EXTRA_STREAM_URL)
         val title = intent.getStringExtra(EXTRA_TITLE) ?: ""
-        val sourceUrl = intent.getStringExtra(EXTRA_SOURCE_URL) ?: ""
+        sourceUrl = intent.getStringExtra(EXTRA_SOURCE_URL) ?: ""
 
         if (streamUrl.isNullOrEmpty()) {
             Toast.makeText(this, "Flux invalide", Toast.LENGTH_SHORT).show()
@@ -77,14 +82,28 @@ class PlayerActivity : AppCompatActivity() {
             binding.playerView.player = it.exoPlayer
         }
 
-        // SponsorBlock : récupérer les segments puis lancer la lecture
+        // Reprise + SponsorBlock : récupérer puis lancer la lecture
         lifecycleScope.launch {
+            val resumeMs = if (sourceUrl.isNotEmpty()) {
+                ResumeBridge.getMs(sourceUrl)
+            } else {
+                0L
+            }
             val segments = if (sourceUrl.isNotEmpty()) {
                 SponsorBridge.getSegments(sourceUrl)
             } else {
                 emptyList()
             }
-            player?.play(streamUrl, segments)
+
+            player?.play(streamUrl, segments, startPositionMs = resumeMs)
+
+            if (resumeMs > 0) {
+                Toast.makeText(
+                    this@PlayerActivity,
+                    "Reprise à ${formatMs(resumeMs)}",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
             if (segments.isNotEmpty()) {
                 Toast.makeText(
                     this@PlayerActivity,
@@ -92,6 +111,29 @@ class PlayerActivity : AppCompatActivity() {
                     Toast.LENGTH_SHORT
                 ).show()
             }
+        }
+    }
+
+    private fun formatMs(ms: Long): String {
+        val totalS = ms / 1000
+        val h = totalS / 3600
+        val m = (totalS % 3600) / 60
+        val s = totalS % 60
+        return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
+    }
+
+    /**
+     * Sauvegarde la position courante (la logique <10s / >95% est côté Python).
+     */
+    private fun savePosition() {
+        val p = player ?: return
+        if (sourceUrl.isEmpty()) return
+        val pos = p.currentPositionMs
+        val dur = p.durationMs
+        if (pos <= 0) return
+        // runBlocking court : écriture JSON locale, appelée à la fermeture
+        runBlocking {
+            ResumeBridge.setMs(sourceUrl, pos, if (dur > 0) dur else 0L)
         }
     }
 
@@ -106,6 +148,7 @@ class PlayerActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
+        savePosition()
         player?.pause()
     }
 

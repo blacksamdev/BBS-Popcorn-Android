@@ -3,6 +3,10 @@ resolver.py — BBS Popcorn Android
 Résolution et normalisation des URLs YouTube via yt-dlp (API Python).
 Version Chaquopy : yt-dlp importé comme module, pas de subprocess.
 Aucune dépendance GTK/UI.
+
+Cookies : le header Cookie de la WebView (CookieManager Android) peut être
+transmis à yt-dlp pour les vidéos avec restriction d'âge — équivalent
+Android du cookies.py desktop, en beaucoup plus simple.
 """
 
 import logging
@@ -49,6 +53,20 @@ def prepare_url(url: str) -> str:
     return url
 
 
+def _base_opts(quality: str, cookie_header: str = None) -> dict:
+    """Options yt-dlp communes."""
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "format": _build_format_selector(quality),
+        "skip_download": True,
+    }
+    if cookie_header:
+        opts["http_headers"] = {"Cookie": cookie_header}
+    return opts
+
+
 def fetch_title(url: str) -> str | None:
     """
     Récupère le titre d'une vidéo YouTube via l'API yt-dlp.
@@ -73,38 +91,25 @@ def fetch_title(url: str) -> str | None:
     return None
 
 
-def resolve_stream_url(url: str, quality: str = "1080") -> str | None:
+def resolve_stream_url(url: str, quality: str = "1080", cookie_header: str = None) -> str | None:
     """
     Résout l'URL de stream direct via l'API yt-dlp (sans pub).
     Retourne l'URL du flux ou None en cas d'échec.
     quality : '2160', '1440', '1080', '720', '480'
-
-    Note Android : pas de ffmpeg disponible sous Chaquopy, donc pas de
-    merge audio+vidéo possible. On force un format combiné (un seul flux
-    contenant audio et vidéo) lisible directement par Media3.
     """
-    opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "noplaylist": True,
-        "format": _build_format_selector(quality),
-        "skip_download": True,
-    }
     try:
         log.debug(f"resolve_stream_url: resolving {url} @ {quality}p")
-        with yt_dlp.YoutubeDL(opts) as ydl:
+        with yt_dlp.YoutubeDL(_base_opts(quality, cookie_header)) as ydl:
             info = ydl.extract_info(url, download=False)
 
         if not info:
             return None
 
-        # Cas standard : URL directe dans info
         stream_url = info.get("url")
         if stream_url:
             log.debug("resolve_stream_url: OK (direct)")
             return stream_url
 
-        # Cas fallback : chercher dans requested_formats / formats
         formats = info.get("formats") or []
         for fmt in reversed(formats):
             if fmt.get("url") and fmt.get("acodec") != "none" and fmt.get("vcodec") != "none":
@@ -117,23 +122,17 @@ def resolve_stream_url(url: str, quality: str = "1080") -> str | None:
     return None
 
 
-def fetch_info(url: str, quality: str = "1080") -> dict | None:
+def fetch_info(url: str, quality: str = "1080", cookie_header: str = None) -> dict | None:
     """
     Récupère titre + URL stream + miniature + durée en UN SEUL appel yt-dlp.
     Plus efficace que fetch_title() + resolve_stream_url() séparés.
+    cookie_header : header Cookie de la WebView pour les vidéos restreintes.
     Retourne un dict {'title', 'stream_url', 'thumbnail', 'duration_s'}
     ou None en cas d'échec.
     """
-    opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "noplaylist": True,
-        "format": _build_format_selector(quality),
-        "skip_download": True,
-    }
     try:
         log.debug(f"fetch_info: start for {url}")
-        with yt_dlp.YoutubeDL(opts) as ydl:
+        with yt_dlp.YoutubeDL(_base_opts(quality, cookie_header)) as ydl:
             info = ydl.extract_info(url, download=False)
 
         if not info:

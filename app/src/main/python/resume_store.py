@@ -1,25 +1,31 @@
+"""
+resume_store.py — BBS Popcorn Android
+Reprise de lecture : mémorise la position par URL.
+Adapté depuis le desktop : GLib remplacé par un data_dir fourni par Android.
+
+Règles :
+- Position < 10s          → pas de sauvegarde (lecture à peine commencée)
+- Position > 95% de durée → entrée effacée (vidéo considérée terminée)
+- 200 entrées max, 60 jours max
+
+Interface Chaquopy : fonctions module-level, valeurs scalaires simples.
+"""
+
 import json
 import os
 import time
 
-from gi.repository import GLib
-
-
-_RESUME_FILE = os.path.join(GLib.get_user_data_dir(), "bbs-popcorn", "resume.json")
-_MAX_ENTRIES = 300
-_MAX_AGE_SECONDS = 30 * 86400   # 30 jours
-_MIN_SAVE_SECONDS = 5.0         # ne pas sauvegarder avant 5 s
+_MAX_ENTRIES = 200
+_MAX_AGE_SECONDS = 60 * 86400   # 60 jours
+_MIN_POSITION_S = 10.0
+_COMPLETED_RATIO = 0.95
 
 
 class ResumeStore:
-    """
-    Stocke la derniere position de lecture pour chaque URL.
-    Limite : 300 entrees max, 30 jours max.
-    """
 
-    def __init__(self):
-        self.path = _RESUME_FILE
-        self._data: dict = {}
+    def __init__(self, data_dir: str):
+        self.path = os.path.join(data_dir, "bbs-popcorn", "resume.json")
+        self._data: dict = {}   # url -> {pos, dur, ts}
         self._load()
 
     # ─────────────────────────────
@@ -48,48 +54,69 @@ class ResumeStore:
     # ─────────────────────────────
 
     def _purge(self):
-        now = time.time()
-        cutoff = now - _MAX_AGE_SECONDS
-        self._data = {k: v for k, v in self._data.items() if v.get("ts", 0) >= cutoff}
+        cutoff = time.time() - _MAX_AGE_SECONDS
+        self._data = {
+            url: e for url, e in self._data.items()
+            if e.get("ts", 0) >= cutoff
+        }
         if len(self._data) > _MAX_ENTRIES:
-            oldest_first = sorted(self._data, key=lambda k: self._data[k].get("ts", 0))
-            for k in oldest_first[: len(self._data) - _MAX_ENTRIES]:
-                del self._data[k]
+            # garder les plus récentes
+            items = sorted(self._data.items(), key=lambda kv: kv[1].get("ts", 0))
+            self._data = dict(items[-_MAX_ENTRIES:])
 
     # ─────────────────────────────
     # public API
     # ─────────────────────────────
 
-    def get(self, url: str) -> float | None:
-        """Retourne la position sauvegardee pour cette URL, ou None."""
+    def get(self, url: str) -> float:
+        """Retourne la position de reprise en secondes, 0.0 si aucune."""
         entry = self._data.get(url)
         if not entry:
-            return None
-        if time.time() - entry.get("ts", 0) > _MAX_AGE_SECONDS:
-            del self._data[url]
-            return None
-        pos = entry.get("pos")
-        return float(pos) if pos is not None else None
+            return 0.0
+        return float(entry.get("pos", 0.0))
 
-    def set(self, url: str, pos: float, duration: float | None = None):
-        """
-        Sauvegarde la position.
-        Ne sauvegarde pas si :
-          - pos < 5 s (debut de video)
-          - pos >= duree - 30 s ou >= 90 % de la duree (fin de video)
-        """
-        if pos < _MIN_SAVE_SECONDS:
-            self.delete(url)
+    def set(self, url: str, position_s: float, duration_s: float = 0.0):
+        """Enregistre la position. Efface si quasi-terminée, ignore si < 10s."""
+        if position_s < _MIN_POSITION_S:
             return
-        if duration and duration > 0:
-            if pos >= duration - 30 or pos >= duration * 0.9:
-                self.delete(url)
-                return
-        self._data[url] = {"pos": round(pos, 1), "ts": int(time.time())}
+        if duration_s > 0 and position_s >= duration_s * _COMPLETED_RATIO:
+            self._data.pop(url, None)
+            self._save()
+            return
+        self._data[url] = {
+            "pos": float(position_s),
+            "dur": float(duration_s),
+            "ts": int(time.time()),
+        }
         self._purge()
         self._save()
 
-    def delete(self, url: str):
-        if url in self._data:
-            del self._data[url]
-            self._save()
+    def clear(self):
+        self._data = {}
+        self._save()
+
+
+# ─────────────────────────────
+# Interface Chaquopy (module-level)
+# ─────────────────────────────
+
+_store: ResumeStore | None = None
+
+
+def init(data_dir: str):
+    global _store
+    _store = ResumeStore(data_dir)
+
+
+def get(url: str) -> float:
+    return _store.get(url) if _store else 0.0
+
+
+def set_position(url: str, position_s: float, duration_s: float = 0.0):
+    if _store is not None:
+        _store.set(url, position_s, duration_s)
+
+
+def clear():
+    if _store is not None:
+        _store.clear()

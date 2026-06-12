@@ -1,6 +1,7 @@
 package io.github.blacksamdev.popcorn.ui
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
@@ -10,33 +11,35 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.google.android.gms.cast.framework.CastButtonFactory
 import com.google.android.gms.cast.framework.CastContext
 import io.github.blacksamdev.popcorn.R
 import io.github.blacksamdev.popcorn.bridge.HistoryBridge
+import io.github.blacksamdev.popcorn.bridge.ResumeBridge
 import io.github.blacksamdev.popcorn.bridge.YtdlpBridge
 import io.github.blacksamdev.popcorn.databinding.ActivityMainBinding
 import kotlinx.coroutines.launch
 
 /**
- * MainActivity — v0.2 : WebView YouTube intégrée (architecture desktop).
+ * MainActivity — v0.3 : WebView YouTube + historique + qualité + reprise.
  *
  * L'utilisateur navigue sur m.youtube.com normalement (recherche, abonnements,
  * recommandations). Au clic sur une vidéo, BBS intercepte la navigation,
  * bloque la lecture YouTube (et ses pubs) et lance la lecture propre
  * via yt-dlp → Media3.
- *
- * Interception double (YouTube mobile est une SPA) :
- * - shouldOverrideUrlLoading : navigations classiques
- * - doUpdateVisitedHistory   : navigations JavaScript internes
  */
 class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val YOUTUBE_HOME = "https://m.youtube.com"
         private const val INTERCEPT_DEBOUNCE_MS = 2000L
+        private const val PREFS_NAME = "bbs_popcorn"
+        private const val PREF_QUALITY = "quality"
+        private const val DEFAULT_QUALITY = "1080"
+        private val QUALITIES = arrayOf("480", "720", "1080", "1440", "2160")
     }
 
     private lateinit var binding: ActivityMainBinding
@@ -52,6 +55,7 @@ class MainActivity : AppCompatActivity() {
         // Init Chaquopy (une seule fois pour toute l'app)
         YtdlpBridge.init(applicationContext)
         HistoryBridge.init(applicationContext)
+        ResumeBridge.init(applicationContext)
 
         // Init Cast SDK
         CastContext.getSharedInstance(applicationContext)
@@ -68,6 +72,9 @@ class MainActivity : AppCompatActivity() {
         binding.btnHistory.setOnClickListener {
             startActivity(Intent(this, HistoryActivity::class.java))
         }
+
+        // Bouton qualité
+        binding.btnQuality.setOnClickListener { showQualityDialog() }
 
         setupWebView()
 
@@ -91,6 +98,38 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleShareIntent(intent)
+    }
+
+    // ─────────────────────────────
+    // Qualité
+    // ─────────────────────────────
+
+    private fun currentQuality(): String {
+        return getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(PREF_QUALITY, DEFAULT_QUALITY) ?: DEFAULT_QUALITY
+    }
+
+    private fun showQualityDialog() {
+        val current = currentQuality()
+        val checked = QUALITIES.indexOf(current).coerceAtLeast(0)
+        val labels = QUALITIES.map { "${it}p" }.toTypedArray()
+
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.quality_title))
+            .setSingleChoiceItems(labels, checked) { dialog, which ->
+                getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                    .edit()
+                    .putString(PREF_QUALITY, QUALITIES[which])
+                    .apply()
+                dialog.dismiss()
+                Toast.makeText(
+                    this,
+                    getString(R.string.quality_set, QUALITIES[which]),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     // ─────────────────────────────
@@ -210,7 +249,7 @@ class MainActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             val cleanUrl = YtdlpBridge.prepareUrl(rawUrl)
-            val info = YtdlpBridge.fetchInfo(cleanUrl)
+            val info = YtdlpBridge.fetchInfo(cleanUrl, quality = currentQuality())
 
             binding.loadingOverlay.visibility = View.GONE
 

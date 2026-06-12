@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
  *
  * Gère :
  * - Lecture d'un stream URL direct (résolu par YtdlpBridge)
+ * - Reprise de lecture (position de départ)
  * - Skip automatique des segments SponsorBlock
  * - Callbacks de statut vers le ViewModel
  */
@@ -32,11 +33,18 @@ class BbsPlayer(
 
     // ─── Lecture ──────────────────────────────────────────────────────
 
-    fun play(streamUrl: String, segments: List<SponsorBridge.SponsorSegment> = emptyList()) {
+    fun play(
+        streamUrl: String,
+        segments: List<SponsorBridge.SponsorSegment> = emptyList(),
+        startPositionMs: Long = 0L,
+    ) {
         sponsorSegments = segments
         val mediaItem = MediaItem.fromUri(streamUrl)
         exoPlayer.setMediaItem(mediaItem)
         exoPlayer.prepare()
+        if (startPositionMs > 0) {
+            exoPlayer.seekTo(startPositionMs)
+        }
         exoPlayer.play()
         startSponsorWatcher()
         onStatusChange?.invoke("Lecture en cours.")

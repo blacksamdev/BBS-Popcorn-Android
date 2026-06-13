@@ -3,6 +3,7 @@ name: Build APK
 on:
   push:
     branches: [ main ]
+    tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
 
@@ -40,8 +41,26 @@ jobs:
           BBS_KEY_ALIAS: ${{ secrets.DEBUG_KEY_ALIAS }}
         run: ./gradlew assembleDebug
 
-      - name: Upload APK
+      - name: Upload APK (artifact CI)
         uses: actions/upload-artifact@v4
         with:
           name: bbs-popcorn-android-debug
           path: app/build/outputs/apk/debug/*.apk
+
+      # ── Release : uniquement sur un tag v* ──
+      - name: Rename APK for release
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          mkdir -p release
+          cp app/build/outputs/apk/debug/*.apk \
+            "release/bbs-popcorn-android-${GITHUB_REF_NAME}.apk"
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*.apk
+          generate_release_notes: false
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -24,21 +24,22 @@ import io.github.blacksamdev.popcorn.databinding.ActivityMainBinding
 import kotlinx.coroutines.launch
 
 /**
- * MainActivity — v0.3 : WebView YouTube + historique + qualité + reprise.
+ * MainActivity — v0.3 : WebView YouTube + historique + réglages + reprise.
  *
- * L'utilisateur navigue sur m.youtube.com normalement (recherche, abonnements,
- * recommandations). Au clic sur une vidéo, BBS intercepte la navigation,
- * bloque la lecture YouTube (et ses pubs) et lance la lecture propre
- * via yt-dlp → Media3.
+ * Réglages (⚙) :
+ * - Qualité vidéo cible
+ * - SponsorBlock : DÉSACTIVÉ par défaut. L'application ne transmet rien
+ *   à un service tiers tant que l'utilisateur ne l'active pas explicitement.
  */
 class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val YOUTUBE_HOME = "https://m.youtube.com"
         private const val INTERCEPT_DEBOUNCE_MS = 2000L
-        private const val PREFS_NAME = "bbs_popcorn"
-        private const val PREF_QUALITY = "quality"
-        private const val DEFAULT_QUALITY = "1080"
+        const val PREFS_NAME = "bbs_popcorn"
+        const val PREF_QUALITY = "quality"
+        const val PREF_SPONSORBLOCK = "sponsorblock_enabled"
+        const val DEFAULT_QUALITY = "1080"
         private val QUALITIES = arrayOf("480", "720", "1080", "1440", "2160")
     }
 
@@ -73,8 +74,8 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, HistoryActivity::class.java))
         }
 
-        // Bouton qualité
-        binding.btnQuality.setOnClickListener { showQualityDialog() }
+        // Bouton réglages
+        binding.btnQuality.setOnClickListener { showSettingsDialog() }
 
         setupWebView()
 
@@ -101,12 +102,38 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ─────────────────────────────
-    // Qualité
+    // Réglages
     // ─────────────────────────────
 
+    private fun prefs() = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
     private fun currentQuality(): String {
-        return getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(PREF_QUALITY, DEFAULT_QUALITY) ?: DEFAULT_QUALITY
+        return prefs().getString(PREF_QUALITY, DEFAULT_QUALITY) ?: DEFAULT_QUALITY
+    }
+
+    private fun sponsorBlockEnabled(): Boolean {
+        return prefs().getBoolean(PREF_SPONSORBLOCK, false)  // désactivé par défaut
+    }
+
+    private fun showSettingsDialog() {
+        val sbState = if (sponsorBlockEnabled())
+            getString(R.string.settings_sb_on) else getString(R.string.settings_sb_off)
+
+        val items = arrayOf(
+            getString(R.string.quality_title) + " — ${currentQuality()}p",
+            getString(R.string.settings_sponsorblock) + " — $sbState",
+        )
+
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.settings_title))
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> showQualityDialog()
+                    1 -> toggleSponsorBlock()
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     private fun showQualityDialog() {
@@ -117,10 +144,7 @@ class MainActivity : AppCompatActivity() {
         AlertDialog.Builder(this)
             .setTitle(getString(R.string.quality_title))
             .setSingleChoiceItems(labels, checked) { dialog, which ->
-                getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                    .edit()
-                    .putString(PREF_QUALITY, QUALITIES[which])
-                    .apply()
+                prefs().edit().putString(PREF_QUALITY, QUALITIES[which]).apply()
                 dialog.dismiss()
                 Toast.makeText(
                     this,
@@ -130,6 +154,29 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
+    }
+
+    private fun toggleSponsorBlock() {
+        val newState = !sponsorBlockEnabled()
+        if (newState) {
+            // Activation : informer l'utilisateur de la transmission tierce
+            AlertDialog.Builder(this)
+                .setTitle(getString(R.string.settings_sponsorblock))
+                .setMessage(getString(R.string.settings_sb_consent))
+                .setPositiveButton(android.R.string.ok) { _, _ ->
+                    prefs().edit().putBoolean(PREF_SPONSORBLOCK, true).apply()
+                    Toast.makeText(
+                        this, getString(R.string.settings_sb_enabled), Toast.LENGTH_SHORT
+                    ).show()
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .show()
+        } else {
+            prefs().edit().putBoolean(PREF_SPONSORBLOCK, false).apply()
+            Toast.makeText(
+                this, getString(R.string.settings_sb_disabled), Toast.LENGTH_SHORT
+            ).show()
+        }
     }
 
     // ─────────────────────────────

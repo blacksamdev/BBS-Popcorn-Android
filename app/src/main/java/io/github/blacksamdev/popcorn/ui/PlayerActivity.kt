@@ -1,5 +1,6 @@
 package io.github.blacksamdev.popcorn.ui
 
+import android.content.Context
 import android.os.Bundle
 import android.view.WindowManager
 import android.widget.Toast
@@ -22,7 +23,8 @@ import kotlinx.coroutines.runBlocking
  *
  * - Lecture locale via Media3/ExoPlayer (BbsPlayer)
  * - Reprise de lecture (resume_store via ResumeBridge)
- * - Skip automatique des segments SponsorBlock
+ * - SponsorBlock : UNIQUEMENT si activé dans les réglages (off par défaut —
+ *   aucune requête vers sponsor.ajay.app sans activation explicite)
  * - Si une session Chromecast est active : envoi du flux vers la TV
  * - Bouton/geste retour : arrêt propre de la lecture et retour à l'UI
  */
@@ -82,14 +84,18 @@ class PlayerActivity : AppCompatActivity() {
             binding.playerView.player = it.exoPlayer
         }
 
-        // Reprise + SponsorBlock : récupérer puis lancer la lecture
+        val sponsorBlockEnabled = getSharedPreferences(
+            MainActivity.PREFS_NAME, Context.MODE_PRIVATE
+        ).getBoolean(MainActivity.PREF_SPONSORBLOCK, false)
+
+        // Reprise + SponsorBlock (si activé) : récupérer puis lancer la lecture
         lifecycleScope.launch {
             val resumeMs = if (sourceUrl.isNotEmpty()) {
                 ResumeBridge.getMs(sourceUrl)
             } else {
                 0L
             }
-            val segments = if (sourceUrl.isNotEmpty()) {
+            val segments = if (sponsorBlockEnabled && sourceUrl.isNotEmpty()) {
                 SponsorBridge.getSegments(sourceUrl)
             } else {
                 emptyList()

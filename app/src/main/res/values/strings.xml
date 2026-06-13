@@ -1,6 +1,6 @@
 <resources>
     <string name="app_name">BBS Popcorn</string>
-    <string name="main_subtitle">YouTube sans pub — yt-dlp + Media3</string>
+    <string name="main_subtitle">Lecteur YouTube léger — yt-dlp + Media3</string>
     <string name="main_url_hint">URL YouTube</string>
     <string name="main_play">Lecture</string>
     <string name="main_resolving">Résolution du flux…</string>
@@ -10,6 +10,13 @@
     <string name="history_empty">Aucune lecture pour l\'instant</string>
     <string name="history_clear_title">Vider l\'historique</string>
     <string name="history_clear_message">Supprimer toutes les entrées de l\'historique ?</string>
+    <string name="settings_title">Réglages</string>
     <string name="quality_title">Qualité vidéo</string>
     <string name="quality_set">Qualité réglée sur %1$sp</string>
+    <string name="settings_sponsorblock">SponsorBlock</string>
+    <string name="settings_sb_on">activé</string>
+    <string name="settings_sb_off">désactivé</string>
+    <string name="settings_sb_enabled">SponsorBlock activé</string>
+    <string name="settings_sb_disabled">SponsorBlock désactivé</string>
+    <string name="settings_sb_consent">SponsorBlock interroge l\'API publique sponsor.ajay.app à chaque lecture, avec les 4 premiers caractères du hash de l\'identifiant vidéo (k-anonymat : la vidéo regardée n\'est pas identifiable par le serveur).\n\nC\'est la seule communication de l\'application vers un service tiers. Activer ?</string>
 </resources>

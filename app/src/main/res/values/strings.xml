@@ -5,6 +5,8 @@
     <string name="main_play">Lecture</string>
     <string name="main_resolving">Résolution du flux…</string>
     <string name="main_resolve_error">Impossible de résoudre cette vidéo</string>
+    <string name="resolve_fail_title">Vidéo non disponible</string>
+    <string name="resolve_fail_message">Cette vidéo ne peut pas être lue. Elle est peut-être soumise à une restriction YouTube (restriction d'âge, région, ou protection anti-robot) qui empêche la résolution du flux.</string>
     <string name="history_title">Historique</string>
     <string name="history_back">Retour</string>
     <string name="history_empty">Aucune lecture pour l\'instant</string>

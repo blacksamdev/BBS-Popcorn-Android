@@ -10,9 +10,17 @@ import kotlinx.coroutines.withContext
 
 /**
  * YtdlpBridge — pont Kotlin → Python (resolver.py via Chaquopy).
+ * Toutes les opérations sont suspendantes (Dispatchers.IO).
+ *
+ * Cookies : le header Cookie de la WebView est transmis à yt-dlp pour
+ * débloquer les vidéos avec restriction d'âge (si l'utilisateur est
+ * connecté à son compte dans la WebView).
  */
 object YtdlpBridge {
 
+    /**
+     * Résultat complet d'une résolution yt-dlp.
+     */
     data class VideoInfo(
         val title: String,
         val streamUrl: String,
@@ -30,6 +38,9 @@ object YtdlpBridge {
         Python.getInstance().getModule("resolver")
     }
 
+    /**
+     * Header Cookie de la WebView pour youtube.com, null si aucun.
+     */
     private fun webViewCookies(): String? {
         return try {
             CookieManager.getInstance().getCookie("https://m.youtube.com")
@@ -39,14 +50,21 @@ object YtdlpBridge {
         }
     }
 
+    /**
+     * Normalise une URL YouTube (supprime tracking, unifie format).
+     */
     suspend fun prepareUrl(url: String): String = withContext(Dispatchers.IO) {
         try {
             resolver.callAttr("prepare_url", url).toString()
         } catch (e: Exception) {
-            url
+            url // fallback : retourner l'URL brute
         }
     }
 
+    /**
+     * Récupère le titre d'une vidéo via yt-dlp.
+     * Retourne null si indisponible.
+     */
     suspend fun fetchTitle(url: String): String? = withContext(Dispatchers.IO) {
         try {
             resolver.callAttr("fetch_title", url)?.toString()
@@ -55,6 +73,11 @@ object YtdlpBridge {
         }
     }
 
+    /**
+     * Résout l'URL du stream direct (sans pub) via yt-dlp.
+     * quality : "2160", "1440", "1080", "720", "480"
+     * Retourne null si résolution impossible.
+     */
     suspend fun resolveStreamUrl(url: String, quality: String = "1080"): String? =
         withContext(Dispatchers.IO) {
             try {
@@ -66,6 +89,11 @@ object YtdlpBridge {
             }
         }
 
+    /**
+     * Récupère titre + stream + miniature + durée en UN SEUL appel yt-dlp.
+     * Les cookies WebView sont transmis automatiquement (vidéos restreintes).
+     * Retourne null si résolution impossible.
+     */
     suspend fun fetchInfo(url: String, quality: String = "1080"): VideoInfo? =
         withContext(Dispatchers.IO) {
             try {
@@ -74,30 +102,21 @@ object YtdlpBridge {
                 ) ?: return@withContext null
 
                 val map = result.asMap()
+
                 val streamUrl = map[PyObject.fromJava("stream_url")]?.toString()
                     ?: return@withContext null
                 val title = map[PyObject.fromJava("title")]?.toString() ?: ""
                 val thumbnail = map[PyObject.fromJava("thumbnail")]?.toString()
                 val duration = map[PyObject.fromJava("duration_s")]?.toLong() ?: 0L
 
-                VideoInfo(title, streamUrl, thumbnail, duration)
+                VideoInfo(
+                    title = title,
+                    streamUrl = streamUrl,
+                    thumbnailUrl = thumbnail,
+                    durationS = duration,
+                )
             } catch (e: Exception) {
                 null
-            }
-        }
-
-    /**
-     * DIAGNOSTIC : retourne le JSON brut (ok/erreur) de fetch_info_debug.
-     * Permet d'afficher la vraie cause yt-dlp dans le toast.
-     */
-    suspend fun fetchInfoDebug(url: String, quality: String = "1080"): String =
-        withContext(Dispatchers.IO) {
-            try {
-                resolver.callAttr(
-                    "fetch_info_debug", url, quality, webViewCookies()
-                )?.toString() ?: """{"ok":false,"error":"bridge null"}"""
-            } catch (e: Exception) {
-                """{"ok":false,"error":"bridge exception: ${e.message}"}"""
             }
         }
 }

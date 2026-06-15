@@ -296,41 +296,25 @@ class MainActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             val cleanUrl = YtdlpBridge.prepareUrl(rawUrl)
-
-            // DIAGNOSTIC : récupère le JSON ok/erreur complet
-            val debugJson = YtdlpBridge.fetchInfoDebug(cleanUrl, quality = currentQuality())
+            val info = YtdlpBridge.fetchInfo(cleanUrl, quality = currentQuality())
 
             binding.loadingOverlay.visibility = View.GONE
 
-            val obj = try {
-                org.json.JSONObject(debugJson)
-            } catch (e: Exception) {
-                Toast.makeText(this@MainActivity, "JSON invalide: $debugJson", Toast.LENGTH_LONG).show()
+            if (info == null) {
+                Toast.makeText(
+                    this@MainActivity,
+                    getString(R.string.main_resolve_error),
+                    Toast.LENGTH_LONG
+                ).show()
                 return@launch
             }
-
-            if (!obj.optBoolean("ok", false)) {
-                val err = obj.optString("error", "inconnue")
-                val hadCookies = obj.optBoolean("had_cookies", false)
-                val cookieLen = obj.optInt("cookie_len", 0)
-                // Affiche la VRAIE cause + si des cookies étaient présents
-                AlertDialog.Builder(this@MainActivity)
-                    .setTitle("Diagnostic résolution")
-                    .setMessage("Erreur : $err\n\nCookies envoyés : $hadCookies (longueur $cookieLen)")
-                    .setPositiveButton(android.R.string.ok, null)
-                    .show()
-                return@launch
-            }
-
-            val title = obj.optString("title", "")
-            val streamUrl = obj.optString("stream_url", "")
 
             // Historique : enregistrer la lecture
-            HistoryBridge.add(cleanUrl, title)
+            HistoryBridge.add(cleanUrl, info.title)
 
             val playerIntent = Intent(this@MainActivity, PlayerActivity::class.java).apply {
-                putExtra(PlayerActivity.EXTRA_STREAM_URL, streamUrl)
-                putExtra(PlayerActivity.EXTRA_TITLE, title)
+                putExtra(PlayerActivity.EXTRA_STREAM_URL, info.streamUrl)
+                putExtra(PlayerActivity.EXTRA_TITLE, info.title)
                 putExtra(PlayerActivity.EXTRA_SOURCE_URL, cleanUrl)
             }
             startActivity(playerIntent)

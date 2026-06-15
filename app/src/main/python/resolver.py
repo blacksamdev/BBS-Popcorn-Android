@@ -5,11 +5,18 @@ Version Chaquopy : yt-dlp importé comme module, pas de subprocess.
 Aucune dépendance GTK/UI.
 
 Cookies : le header Cookie de la WebView (CookieManager Android) peut être
-transmis à yt-dlp pour les vidéos avec restriction d'âge — équivalent
-Android du cookies.py desktop, en beaucoup plus simple.
+transmis à yt-dlp pour les vidéos avec restriction d'âge.
+
+Sélection de format (Android, sans ffmpeg) :
+On ne peut pas merger vidéo+audio séparés. On privilégie donc dans l'ordre :
+  1. un format combiné progressif (mp4 18/22 : audio+vidéo dans un seul flux)
+  2. un flux HLS (m3u8) que Media3 lit nativement, audio+vidéo inclus
+  3. en dernier recours, le meilleur format jouable (filet de sécurité)
+Le filet de sécurité final évite l'erreur "Requested format is not available"
+qui survenait quand l'utilisateur connecté reçoit un catalogue de formats
+différent (souvent sans le combiné mp4 classique).
 """
 
-import json
 import logging
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
@@ -81,32 +88,41 @@ def fetch_title(url: str) -> str | None:
     return None
 
 
+def _extract_stream(info: dict) -> str | None:
+    """
+    Extrait une URL de flux jouable depuis l'info yt-dlp.
+    Priorité : url directe (déjà sélectionnée par le format selector),
+    puis recherche d'un format combiné dans la liste.
+    """
+    stream_url = info.get("url")
+    if stream_url:
+        return stream_url
+
+    # requested_formats = cas où yt-dlp a choisi vidéo+audio séparés.
+    # Sur Android sans ffmpeg, on ne peut pas merger : on cherche un combiné.
+    formats = info.get("formats") or []
+    # 1. un format combiné (vcodec ET acodec présents)
+    for fmt in reversed(formats):
+        if (fmt.get("url")
+                and fmt.get("acodec") not in (None, "none")
+                and fmt.get("vcodec") not in (None, "none")):
+            return fmt["url"]
+    # 2. un flux HLS (m3u8) — Media3 le lit nativement
+    for fmt in reversed(formats):
+        if fmt.get("url") and fmt.get("protocol", "").startswith("m3u8"):
+            return fmt["url"]
+    return None
+
+
 def resolve_stream_url(url: str, quality: str = "1080", cookie_header: str = None) -> str | None:
     try:
         with yt_dlp.YoutubeDL(_base_opts(quality, cookie_header)) as ydl:
             info = ydl.extract_info(url, download=False)
         if not info:
             return None
-        stream_url = info.get("url")
-        if stream_url:
-            return stream_url
-        formats = info.get("formats") or []
-        for fmt in reversed(formats):
-            if fmt.get("url") and fmt.get("acodec") != "none" and fmt.get("vcodec") != "none":
-                return fmt["url"]
+        return _extract_stream(info)
     except Exception as exc:
         log.debug(f"resolve_stream_url: erreur: {exc}")
-    return None
-
-
-def _extract_stream(info: dict) -> str | None:
-    stream_url = info.get("url")
-    if stream_url:
-        return stream_url
-    formats = info.get("formats") or []
-    for fmt in reversed(formats):
-        if fmt.get("url") and fmt.get("acodec") != "none" and fmt.get("vcodec") != "none":
-            return fmt["url"]
     return None
 
 
@@ -130,51 +146,25 @@ def fetch_info(url: str, quality: str = "1080", cookie_header: str = None) -> di
     return None
 
 
-def fetch_info_debug(url: str, quality: str = "1080", cookie_header: str = None) -> str:
-    """
-    Version diagnostic : retourne un JSON avec soit les infos, soit l'erreur
-    yt-dlp EXACTE. Permet d'afficher la vraie cause dans le toast.
-
-    Retour JSON :
-      {"ok": true, "title": "...", "stream_url": "...", ...}
-      {"ok": false, "error": "<message yt-dlp réel>", "had_cookies": true}
-    """
-    had_cookies = bool(cookie_header)
-    cookie_len = len(cookie_header) if cookie_header else 0
-    try:
-        with yt_dlp.YoutubeDL(_base_opts(quality, cookie_header)) as ydl:
-            info = ydl.extract_info(url, download=False)
-        if not info:
-            return json.dumps({
-                "ok": False,
-                "error": "extract_info a retourné None",
-                "had_cookies": had_cookies,
-                "cookie_len": cookie_len,
-            })
-        stream_url = _extract_stream(info)
-        if not stream_url:
-            return json.dumps({
-                "ok": False,
-                "error": "aucun format combiné audio+vidéo trouvé",
-                "had_cookies": had_cookies,
-                "cookie_len": cookie_len,
-            })
-        return json.dumps({
-            "ok": True,
-            "title": (info.get("title") or "").strip(),
-            "stream_url": stream_url,
-            "thumbnail": info.get("thumbnail"),
-            "duration_s": info.get("duration") or 0,
-        })
-    except Exception as exc:
-        return json.dumps({
-            "ok": False,
-            "error": f"{type(exc).__name__}: {exc}",
-            "had_cookies": had_cookies,
-            "cookie_len": cookie_len,
-        })
-
-
 def _build_format_selector(quality: str) -> str:
+    """
+    Sélecteur progressif avec filet de sécurité.
+
+    Ordre de préférence (yt-dlp essaie chaque option jusqu'à en trouver une) :
+      1. best[height<=Q][vcodec!=none][acodec!=none]
+         → format combiné à la qualité voulue (idéal, lecture directe)
+      2. best[height<=Q][protocol^=m3u8]
+         → flux HLS à la qualité voulue (Media3 lit le HLS nativement)
+      3. best[height<=Q]
+         → meilleur format <= Q, quel qu'il soit
+      4. best
+         → filet de sécurité ABSOLU : n'importe quel format jouable.
+            Évite "Requested format is not available".
+    """
     q = quality if quality in ("2160", "1440", "1080", "720", "480") else "1080"
-    return f"best[height<={q}][vcodec!=none][acodec!=none]/best[height<={q}]"
+    return (
+        f"best[height<={q}][vcodec!=none][acodec!=none]/"
+        f"best[height<={q}][protocol^=m3u8]/"
+        f"best[height<={q}]/"
+        f"best"
+    )

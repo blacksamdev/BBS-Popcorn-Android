@@ -296,37 +296,25 @@ class MainActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             val cleanUrl = YtdlpBridge.prepareUrl(rawUrl)
-            val dbg = YtdlpBridge.fetchInfoDebug(cleanUrl, quality = currentQuality())
+            val info = YtdlpBridge.fetchInfo(cleanUrl, quality = currentQuality())
 
             binding.loadingOverlay.visibility = View.GONE
 
-            val obj = try { org.json.JSONObject(dbg) } catch (e: Exception) {
-                Toast.makeText(this@MainActivity, "JSON invalide: $dbg", Toast.LENGTH_LONG).show()
+            if (info == null) {
+                Toast.makeText(
+                    this@MainActivity,
+                    getString(R.string.main_resolve_error),
+                    Toast.LENGTH_LONG
+                ).show()
                 return@launch
             }
 
-            if (!obj.optBoolean("ok", false)) {
-                val hasCf = obj.optBoolean("has_cookiefile", false)
-                val e1 = obj.optString("err_no_cookie", "—")
-                val e2 = obj.optString("err_cookie", "—")
-                AlertDialog.Builder(this@MainActivity)
-                    .setTitle("Diagnostic 18+")
-                    .setMessage("cookiefile présent : $hasCf\n\n[Sans cookies]\n$e1\n\n[Avec cookiefile]\n$e2")
-                    .setPositiveButton(android.R.string.ok, null)
-                    .show()
-                return@launch
-            }
-
-            val title = obj.optString("title", "")
-            val streamUrl = obj.optString("stream_url", "")
-            val via = obj.optString("via", "?")
-            Toast.makeText(this@MainActivity, "OK via $via", Toast.LENGTH_SHORT).show()
-
-            HistoryBridge.add(cleanUrl, title)
+            // Historique : enregistrer la lecture
+            HistoryBridge.add(cleanUrl, info.title)
 
             val playerIntent = Intent(this@MainActivity, PlayerActivity::class.java).apply {
-                putExtra(PlayerActivity.EXTRA_STREAM_URL, streamUrl)
-                putExtra(PlayerActivity.EXTRA_TITLE, title)
+                putExtra(PlayerActivity.EXTRA_STREAM_URL, info.streamUrl)
+                putExtra(PlayerActivity.EXTRA_TITLE, info.title)
                 putExtra(PlayerActivity.EXTRA_SOURCE_URL, cleanUrl)
             }
             startActivity(playerIntent)

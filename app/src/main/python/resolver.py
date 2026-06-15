@@ -1,10 +1,24 @@
 """
-resolver.py — BBS Popcorn Android — DIAGNOSTIC 3
-Version cookieB (cookiefile en repli) + fetch_info_debug qui retourne
-l'erreur EXACTE des deux tentatives (sans cookies, puis avec cookiefile).
+resolver.py — BBS Popcorn Android
+Résolution via yt-dlp (API Python, Chaquopy). Aucune dépendance GTK/UI.
+
+Stratégie cookies (alignée desktop) :
+- résolution d'abord SANS cookies (cas majoritaire), puis AVEC cookiefile
+  en repli (vidéos à restriction d'âge). cookiefile = fichier Netscape,
+  jamais de header HTTP brut.
+
+Sélection de format (Android, SANS ffmpeg) — POINT CRITIQUE :
+On ne peut PAS merger vidéo+audio séparés (ffmpeg absent). Il faut donc
+ne JAMAIS sélectionner un couple "bestvideo+bestaudio" : yt-dlp tenterait
+un merge et échouerait avec "Requested format is not available".
+On force uniquement des flux UNIQUES contenant déjà audio+vidéo :
+  1. format progressif combiné <= Q (mp4)
+  2. flux HLS <= Q (m3u8, lu par Media3)
+  3. n'importe quel format combiné <= Q
+  4. format 18 (mp4 360p combiné, quasi toujours présent, même en 18+)
+  5. 'best*' = meilleur flux UNIQUE (l'étoile évite le merge auto)
 """
 
-import json
 import logging
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
@@ -37,8 +51,13 @@ def prepare_url(url: str) -> str:
 
 
 def _opts(quality: str, cookiefile: str = None) -> dict:
-    opts = {"quiet": True, "no_warnings": True, "noplaylist": True,
-            "format": _build_format_selector(quality), "skip_download": True}
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "format": _build_format_selector(quality),
+        "skip_download": True,
+    }
     if cookiefile:
         opts["cookiefile"] = cookiefile
     return opts
@@ -95,12 +114,14 @@ def resolve_stream_url(url: str, quality: str = "1080", cookiefile: str = None) 
 
 
 def fetch_info(url: str, quality: str = "1080", cookiefile: str = None) -> dict | None:
+    # 1. sans cookies (cas majoritaire)
     try:
         result = _try_extract(url, quality, cookiefile=None)
         if result:
             return result
     except Exception as exc:
         log.debug(f"fetch_info sans cookies: {exc}")
+    # 2. avec cookiefile (vidéos restreintes)
     if cookiefile:
         try:
             result = _try_extract(url, quality, cookiefile=cookiefile)
@@ -111,42 +132,27 @@ def fetch_info(url: str, quality: str = "1080", cookiefile: str = None) -> dict 
     return None
 
 
-def fetch_info_debug(url: str, quality: str = "1080", cookiefile: str = None) -> str:
-    """Diagnostic : erreurs des DEUX tentatives séparément."""
-    err_no_cookie = None
-    err_cookie = None
-    has_cookiefile = bool(cookiefile)
-
-    # tentative 1 : sans cookies
-    try:
-        r = _try_extract(url, quality, cookiefile=None)
-        if r:
-            return json.dumps({"ok": True, "via": "no_cookie", **r})
-    except Exception as exc:
-        err_no_cookie = f"{type(exc).__name__}: {exc}"
-
-    # tentative 2 : avec cookiefile
-    if cookiefile:
-        try:
-            r = _try_extract(url, quality, cookiefile=cookiefile)
-            if r:
-                return json.dumps({"ok": True, "via": "cookiefile", **r})
-        except Exception as exc:
-            err_cookie = f"{type(exc).__name__}: {exc}"
-
-    return json.dumps({
-        "ok": False,
-        "has_cookiefile": has_cookiefile,
-        "err_no_cookie": err_no_cookie or "—",
-        "err_cookie": err_cookie or "—",
-    })
-
-
 def _build_format_selector(quality: str) -> str:
+    """
+    Sélecteur ANTI-MERGE : uniquement des flux uniques (audio+vidéo intégrés).
+
+    Aucune syntaxe "v+a" → yt-dlp ne tentera jamais de merger (pas de ffmpeg).
+    'b' / 'best' SANS étoile peut déclencher un merge ; on n'utilise donc que
+    des sélecteurs de flux uniques explicites, et 'b*'/'best*' qui autorise
+    yt-dlp à prendre un format unique même non-mergé.
+
+    Paliers :
+      1. best[height<=Q][vcodec!=none][acodec!=none]  (combiné progressif)
+      2. best[height<=Q][protocol^=m3u8]              (HLS, lu par Media3)
+      3. b*[height<=Q][vcodec!=none][acodec!=none]    (combiné, variante)
+      4. 18                                           (mp4 360p combiné — filet)
+      5. b*                                           (meilleur flux unique)
+    """
     q = quality if quality in ("2160", "1440", "1080", "720", "480") else "1080"
     return (
         f"best[height<={q}][vcodec!=none][acodec!=none]/"
         f"best[height<={q}][protocol^=m3u8]/"
-        f"best[height<={q}]/"
-        f"best"
+        f"b*[height<={q}][vcodec!=none][acodec!=none]/"
+        f"18/"
+        f"b*"
     )

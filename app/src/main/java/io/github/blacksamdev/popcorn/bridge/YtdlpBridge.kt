@@ -1,6 +1,7 @@
 package io.github.blacksamdev.popcorn.bridge
 
 import android.content.Context
+import android.webkit.CookieManager
 import com.chaquo.python.PyObject
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
@@ -10,11 +11,12 @@ import kotlinx.coroutines.withContext
 /**
  * YtdlpBridge — pont Kotlin → Python (resolver.py via Chaquopy).
  *
- * NOTE cookies : on NE transmet PLUS les cookies de session à yt-dlp.
- * Ils cassent la résolution sur les comptes connectés (YouTube renvoie une
- * réponse sans formats exploitables). yt-dlp résout les vidéos publiques
- * sans cookies. Le paramètre Python cookie_header reste présent pour
- * compatibilité mais on passe null.
+ * Cookies (approche desktop) :
+ * - On récupère les cookies WebView des domaines YouTube/Google
+ * - cookies.py les écrit dans un fichier Netscape filtré
+ * - On passe le CHEMIN de ce fichier à yt-dlp (option cookiefile)
+ * - resolver.py tente d'abord SANS cookies, puis AVEC en repli
+ *   (vidéos à restriction d'âge). Jamais de header Cookie brut.
  */
 object YtdlpBridge {
 
@@ -25,14 +27,58 @@ object YtdlpBridge {
         val durationS: Long,
     )
 
+    // Domaines dont on extrait les cookies (alignés sur cookies.py)
+    private val COOKIE_DOMAINS = listOf(
+        "https://www.youtube.com",
+        "https://m.youtube.com",
+        "https://youtube.com",
+        "https://www.google.com",
+        "https://googlevideo.com",
+    )
+
     fun init(context: Context) {
         if (!Python.isStarted()) {
             Python.start(AndroidPlatform(context))
         }
+        // Init du module cookies avec le dossier de stockage app
+        cookiesModule.callAttr("init", context.filesDir.absolutePath)
     }
 
     private val resolver by lazy {
         Python.getInstance().getModule("resolver")
+    }
+
+    private val cookiesModule by lazy {
+        Python.getInstance().getModule("cookies")
+    }
+
+    /**
+     * Construit le fichier cookies.txt filtré depuis la WebView.
+     * Retourne le chemin du fichier, ou null si aucun cookie utile.
+     */
+    private fun buildCookieFile(): String? {
+        return try {
+            val cm = CookieManager.getInstance()
+            val map = mutableMapOf<String, String>()
+            for (domainUrl in COOKIE_DOMAINS) {
+                val c = cm.getCookie(domainUrl)
+                if (!c.isNullOrBlank()) {
+                    // clé = host sans schéma (ex: .youtube.com)
+                    val host = domainUrl.removePrefix("https://").removePrefix("www.")
+                    map[".$host"] = c
+                }
+            }
+            if (map.isEmpty()) return null
+
+            // Convertit la Map Kotlin en dict Python
+            val pyDict = Python.getInstance().builtins.callAttr("dict")
+            for ((k, v) in map) {
+                pyDict.callAttr("__setitem__", k, v)
+            }
+            cookiesModule.callAttr("write_cookies", pyDict)?.toString()
+        } catch (e: Exception) {
+            null
+        }
     }
 
     suspend fun prepareUrl(url: String): String = withContext(Dispatchers.IO) {
@@ -54,7 +100,9 @@ object YtdlpBridge {
     suspend fun resolveStreamUrl(url: String, quality: String = "1080"): String? =
         withContext(Dispatchers.IO) {
             try {
-                resolver.callAttr("resolve_stream_url", url, quality, null)?.toString()
+                val cookieFile = buildCookieFile()
+                resolver.callAttr("resolve_stream_url", url, quality, cookieFile)
+                    ?.toString()
             } catch (e: Exception) {
                 null
             }
@@ -63,8 +111,9 @@ object YtdlpBridge {
     suspend fun fetchInfo(url: String, quality: String = "1080"): VideoInfo? =
         withContext(Dispatchers.IO) {
             try {
+                val cookieFile = buildCookieFile()  // null si pas connecté
                 val result: PyObject = resolver.callAttr(
-                    "fetch_info", url, quality, null
+                    "fetch_info", url, quality, cookieFile
                 ) ?: return@withContext null
 
                 val map = result.asMap()

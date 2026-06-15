@@ -1,10 +1,21 @@
 """
 resolver.py — BBS Popcorn Android
-Résolution via yt-dlp (API Python, Chaquopy). Version diagnostic 2 :
-filet de sécurité format CONSERVÉ + fetch_info_debug pour voir l'erreur réelle.
+Résolution via yt-dlp (API Python, Chaquopy). Aucune dépendance GTK/UI.
+
+IMPORTANT — cookies :
+Transmettre les cookies de session d'un compte connecté à yt-dlp casse la
+résolution (YouTube renvoie alors une réponse sans formats exploitables →
+"Requested format is not available"). On NE transmet donc PAS les cookies
+par défaut. yt-dlp résout très bien la grande majorité des vidéos publiques
+sans cookies. Le support des vidéos à restriction d'âge via cookies pourra
+être réintroduit plus tard de façon ciblée (cookies filtrés, ou en repli
+uniquement si la résolution sans cookies échoue).
+
+Sélection de format (Android, sans ffmpeg) :
+On privilégie un format combiné, puis HLS (lu nativement par Media3), puis
+le meilleur format jouable en filet de sécurité.
 """
 
-import json
 import logging
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
@@ -36,17 +47,15 @@ def prepare_url(url: str) -> str:
     return url
 
 
-def _base_opts(quality: str, cookie_header: str = None) -> dict:
-    opts = {
+def _base_opts(quality: str) -> dict:
+    # Pas de cookies : ils cassent la résolution sur compte connecté.
+    return {
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
         "format": _build_format_selector(quality),
         "skip_download": True,
     }
-    if cookie_header:
-        opts["http_headers"] = {"Cookie": cookie_header}
-    return opts
 
 
 def fetch_title(url: str) -> str | None:
@@ -79,8 +88,9 @@ def _extract_stream(info: dict) -> str | None:
 
 
 def resolve_stream_url(url: str, quality: str = "1080", cookie_header: str = None) -> str | None:
+    # cookie_header ignoré volontairement (compat signature)
     try:
-        with yt_dlp.YoutubeDL(_base_opts(quality, cookie_header)) as ydl:
+        with yt_dlp.YoutubeDL(_base_opts(quality)) as ydl:
             info = ydl.extract_info(url, download=False)
         if not info:
             return None
@@ -91,8 +101,9 @@ def resolve_stream_url(url: str, quality: str = "1080", cookie_header: str = Non
 
 
 def fetch_info(url: str, quality: str = "1080", cookie_header: str = None) -> dict | None:
+    # cookie_header ignoré volontairement (compat signature)
     try:
-        with yt_dlp.YoutubeDL(_base_opts(quality, cookie_header)) as ydl:
+        with yt_dlp.YoutubeDL(_base_opts(quality)) as ydl:
             info = ydl.extract_info(url, download=False)
         if not info:
             return None
@@ -108,47 +119,6 @@ def fetch_info(url: str, quality: str = "1080", cookie_header: str = None) -> di
     except Exception as exc:
         log.debug(f"fetch_info: erreur: {exc}")
     return None
-
-
-def fetch_info_debug(url: str, quality: str = "1080", cookie_header: str = None) -> str:
-    """Diagnostic : JSON avec infos OU erreur yt-dlp exacte + nb de formats vus."""
-    had_cookies = bool(cookie_header)
-    cookie_len = len(cookie_header) if cookie_header else 0
-    try:
-        with yt_dlp.YoutubeDL(_base_opts(quality, cookie_header)) as ydl:
-            info = ydl.extract_info(url, download=False)
-        if not info:
-            return json.dumps({"ok": False, "error": "extract_info=None",
-                               "had_cookies": had_cookies, "cookie_len": cookie_len})
-        nb_formats = len(info.get("formats") or [])
-        stream_url = _extract_stream(info)
-        if not stream_url:
-            # liste les protocoles/formats vus pour comprendre
-            fmts = info.get("formats") or []
-            sample = []
-            for f in fmts[-8:]:
-                sample.append(f"{f.get('format_id')}:{f.get('protocol')}:"
-                              f"v={f.get('vcodec')}:a={f.get('acodec')}")
-            return json.dumps({
-                "ok": False,
-                "error": f"aucun flux jouable extrait ({nb_formats} formats)",
-                "sample": sample,
-                "had_cookies": had_cookies, "cookie_len": cookie_len,
-            })
-        return json.dumps({
-            "ok": True,
-            "title": (info.get("title") or "").strip(),
-            "stream_url": stream_url,
-            "thumbnail": info.get("thumbnail"),
-            "duration_s": info.get("duration") or 0,
-            "nb_formats": nb_formats,
-        })
-    except Exception as exc:
-        return json.dumps({
-            "ok": False,
-            "error": f"{type(exc).__name__}: {exc}",
-            "had_cookies": had_cookies, "cookie_len": cookie_len,
-        })
 
 
 def _build_format_selector(quality: str) -> str:

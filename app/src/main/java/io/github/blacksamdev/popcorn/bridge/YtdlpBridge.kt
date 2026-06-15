@@ -108,6 +108,16 @@ object YtdlpBridge {
             }
         }
 
+    /** DIAGNOSTIC : liste brute des formats avec cookiefile. */
+    suspend fun listFormatsDebug(url: String): String = withContext(Dispatchers.IO) {
+        try {
+            resolver.callAttr("list_formats_debug", url, buildCookieFile())
+                ?.toString() ?: """{"ok":false,"error":"null"}"""
+        } catch (e: Exception) {
+            """{"ok":false,"error":"${e.message}"}"""
+        }
+    }
+
     suspend fun fetchInfo(url: String, quality: String = "1080"): VideoInfo? =
         withContext(Dispatchers.IO) {
             try {

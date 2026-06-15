@@ -298,16 +298,31 @@ class MainActivity : AppCompatActivity() {
             val cleanUrl = YtdlpBridge.prepareUrl(rawUrl)
             val info = YtdlpBridge.fetchInfo(cleanUrl, quality = currentQuality())
 
-            binding.loadingOverlay.visibility = View.GONE
-
             if (info == null) {
-                Toast.makeText(
-                    this@MainActivity,
-                    getString(R.string.main_resolve_error),
-                    Toast.LENGTH_LONG
-                ).show()
+                // DIAGNOSTIC : lister les formats réels
+                val dbg = YtdlpBridge.listFormatsDebug(cleanUrl)
+                binding.loadingOverlay.visibility = View.GONE
+                val obj = try { org.json.JSONObject(dbg) } catch (e: Exception) {
+                    Toast.makeText(this@MainActivity, dbg, Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+                val msg = if (obj.optBoolean("ok", false)) {
+                    val arr = obj.optJSONArray("formats")
+                    val list = if (arr != null) (0 until arr.length())
+                        .joinToString("\n") { arr.optString(it) } else "(vide)"
+                    "n=${obj.optInt("n")} formats:\n$list"
+                } else {
+                    "Erreur: ${obj.optString("error")}"
+                }
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Formats disponibles")
+                    .setMessage(msg)
+                    .setPositiveButton(android.R.string.ok, null)
+                    .show()
                 return@launch
             }
+
+            binding.loadingOverlay.visibility = View.GONE
 
             // Historique : enregistrer la lecture
             HistoryBridge.add(cleanUrl, info.title)

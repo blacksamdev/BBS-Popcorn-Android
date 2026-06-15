@@ -1,17 +1,10 @@
 """
-resolver.py — BBS Popcorn Android
-Résolution via yt-dlp (API Python, Chaquopy). Aucune dépendance GTK/UI.
-
-Stratégie cookies (alignée desktop, en mieux) :
-- On résout d'ABORD sans cookies (cas majoritaire, le plus fiable).
-- Si la résolution échoue ET qu'un fichier cookies.txt filtré est fourni,
-  on RÉESSAYE avec yt-dlp `cookiefile` (vidéos à restriction d'âge).
-- On n'utilise JAMAIS de header Cookie HTTP brut : ça court-circuite la
-  gestion de session de yt-dlp et casse la résolution sur compte connecté.
-
-Format (Android, sans ffmpeg) : combiné → HLS (lu par Media3) → filet 'best'.
+resolver.py — BBS Popcorn Android — DIAGNOSTIC 3
+Version cookieB (cookiefile en repli) + fetch_info_debug qui retourne
+l'erreur EXACTE des deux tentatives (sans cookies, puis avec cookiefile).
 """
 
+import json
 import logging
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
@@ -44,15 +37,10 @@ def prepare_url(url: str) -> str:
 
 
 def _opts(quality: str, cookiefile: str = None) -> dict:
-    opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "noplaylist": True,
-        "format": _build_format_selector(quality),
-        "skip_download": True,
-    }
+    opts = {"quiet": True, "no_warnings": True, "noplaylist": True,
+            "format": _build_format_selector(quality), "skip_download": True}
     if cookiefile:
-        opts["cookiefile"] = cookiefile   # fichier Netscape, PAS un header brut
+        opts["cookiefile"] = cookiefile
     return opts
 
 
@@ -107,28 +95,51 @@ def resolve_stream_url(url: str, quality: str = "1080", cookiefile: str = None) 
 
 
 def fetch_info(url: str, quality: str = "1080", cookiefile: str = None) -> dict | None:
-    """
-    Résout titre + stream. Tente sans cookies, puis avec cookiefile en repli.
-    """
-    # 1. tentative sans cookies (cas majoritaire, le plus fiable)
     try:
         result = _try_extract(url, quality, cookiefile=None)
         if result:
             return result
     except Exception as exc:
-        log.debug(f"fetch_info: sans cookies échoue: {exc}")
-
-    # 2. repli avec cookiefile (vidéos à restriction d'âge), si fourni
+        log.debug(f"fetch_info sans cookies: {exc}")
     if cookiefile:
         try:
-            log.debug("fetch_info: nouvelle tentative avec cookiefile")
             result = _try_extract(url, quality, cookiefile=cookiefile)
             if result:
                 return result
         except Exception as exc:
-            log.debug(f"fetch_info: avec cookies échoue aussi: {exc}")
-
+            log.debug(f"fetch_info avec cookies: {exc}")
     return None
+
+
+def fetch_info_debug(url: str, quality: str = "1080", cookiefile: str = None) -> str:
+    """Diagnostic : erreurs des DEUX tentatives séparément."""
+    err_no_cookie = None
+    err_cookie = None
+    has_cookiefile = bool(cookiefile)
+
+    # tentative 1 : sans cookies
+    try:
+        r = _try_extract(url, quality, cookiefile=None)
+        if r:
+            return json.dumps({"ok": True, "via": "no_cookie", **r})
+    except Exception as exc:
+        err_no_cookie = f"{type(exc).__name__}: {exc}"
+
+    # tentative 2 : avec cookiefile
+    if cookiefile:
+        try:
+            r = _try_extract(url, quality, cookiefile=cookiefile)
+            if r:
+                return json.dumps({"ok": True, "via": "cookiefile", **r})
+        except Exception as exc:
+            err_cookie = f"{type(exc).__name__}: {exc}"
+
+    return json.dumps({
+        "ok": False,
+        "has_cookiefile": has_cookiefile,
+        "err_no_cookie": err_no_cookie or "—",
+        "err_cookie": err_cookie or "—",
+    })
 
 
 def _build_format_selector(quality: str) -> str:

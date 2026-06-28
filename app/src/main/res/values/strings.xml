@@ -21,4 +21,7 @@
     <string name="settings_sb_enabled">SponsorBlock activé</string>
     <string name="settings_sb_disabled">SponsorBlock désactivé</string>
     <string name="settings_sb_consent">SponsorBlock interroge l\'API publique sponsor.ajay.app à chaque lecture, avec les 4 premiers caractères du hash de l\'identifiant vidéo (k-anonymat : la vidéo regardée n\'est pas identifiable par le serveur).\n\nC\'est la seule communication de l\'application vers un service tiers. Activer ?</string>
+    <string name="cast_stop">Arrêter le cast</string>
+    <string name="cast_on_device">Sur %1$s</string>
+    <string name="cast_disconnected">Cast déconnecté</string>
 </resources>

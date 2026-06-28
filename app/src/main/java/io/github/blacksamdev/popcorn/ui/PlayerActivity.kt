@@ -1,6 +1,7 @@
 package io.github.blacksamdev.popcorn.ui
 
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.view.WindowManager
 import android.widget.Toast
@@ -25,7 +26,8 @@ import kotlinx.coroutines.runBlocking
  * - Reprise de lecture (resume_store via ResumeBridge)
  * - SponsorBlock : UNIQUEMENT si activé dans les réglages (off par défaut —
  *   aucune requête vers sponsor.ajay.app sans activation explicite)
- * - Si une session Chromecast est active : envoi du flux vers la TV
+ * - Si une session Chromecast est active : on caste et on ouvre la
+ *   télécommande (CastControlActivity) au lieu de lire en local
  * - Bouton/geste retour : arrêt propre de la lecture et retour à l'UI
  */
 class PlayerActivity : AppCompatActivity() {
@@ -71,10 +73,14 @@ class PlayerActivity : AppCompatActivity() {
 
         castManager = CastManager(this).also { it.register() }
 
-        // Session Chromecast active → on caste, on ne lit pas en local
+        // Session Chromecast active → on caste et on ouvre la télécommande
         if (castManager?.isConnected == true) {
             castManager?.loadMedia(streamUrl, title)
-            Toast.makeText(this, "Lecture sur Chromecast", Toast.LENGTH_SHORT).show()
+            val ctrl = Intent(this, CastControlActivity::class.java).apply {
+                putExtra(CastControlActivity.EXTRA_STREAM_URL, streamUrl)
+                putExtra(CastControlActivity.EXTRA_TITLE, title)
+            }
+            startActivity(ctrl)
             finish()
             return
         }

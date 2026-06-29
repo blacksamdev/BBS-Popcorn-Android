@@ -13,10 +13,10 @@ import io.github.blacksamdev.popcorn.player.CastManager
  * CastControlActivity — télécommande de lecture pour le cast Chromecast.
  * Disposition inspirée de la remote native, habillée aux couleurs pOpcOrn.
  *
- * - Play / pause (gros bouton central)
- * - Sauts rapides : −30 / −10 / +10 / +30 s (cumulables)
- * - Timeline (seek libre) avec minutage au toucher
- * - Barre de volume "pilule" + boutons volume physiques, avec % affiché
+ * Deux modes d'ouverture :
+ * - Depuis PlayerActivity au lancement d'une vidéo (EXTRA_TITLE fourni)
+ * - Depuis l'icône cast quand une session est déjà active (titre lu depuis
+ *   la session en cours)
  */
 class CastControlActivity : AppCompatActivity() {
 
@@ -38,9 +38,6 @@ class CastControlActivity : AppCompatActivity() {
         binding = ActivityCastControlBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        val title = intent.getStringExtra(EXTRA_TITLE) ?: ""
-        binding.textTitle.text = title
-
         castManager = CastManager(this).also { cm ->
             cm.register()
             cm.onProgress = { posMs, durMs -> onProgress(posMs, durMs) }
@@ -53,6 +50,22 @@ class CastControlActivity : AppCompatActivity() {
                 }
             }
         }
+
+        // Si aucune session active à l'ouverture → rien à contrôler, on ferme
+        if (castManager?.isConnected != true) {
+            Toast.makeText(this, getString(R.string.cast_disconnected), Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
+
+        // Titre : depuis l'intent, sinon depuis la session en cours
+        val titleFromIntent = intent.getStringExtra(EXTRA_TITLE)
+        val title = if (!titleFromIntent.isNullOrBlank()) {
+            titleFromIntent
+        } else {
+            castManager?.currentMediaTitle() ?: ""
+        }
+        binding.textTitle.text = title
 
         binding.textDevice.text = castManager?.deviceName ?: getString(R.string.cast_device_fallback)
 

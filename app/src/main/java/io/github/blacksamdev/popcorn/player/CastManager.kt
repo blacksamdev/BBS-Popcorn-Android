@@ -20,6 +20,7 @@ import com.google.android.gms.cast.framework.media.RemoteMediaClient
  * - Contrôles de lecture : play/pause/stop, seek absolu, seek relatif (±N s)
  * - Contrôle du volume (barre + boutons physiques)
  * - Suivi de progression en temps réel (position / durée)
+ * - Lecture du titre du média en cours (pour rouvrir la télécommande)
  * - Callbacks connect/disconnect
  */
 class CastManager(context: Context) {
@@ -87,12 +88,27 @@ class CastManager(context: Context) {
         )
     }
 
-    // ─── Cast ─────────────────────────────────────────────────────────
+    // ─── État session ─────────────────────────────────────────────────
 
     val isConnected: Boolean get() = castSession?.isConnected == true
 
     val deviceName: String?
         get() = castSession?.castDevice?.friendlyName
+
+    /** Vrai si une session est active ET un média est chargé. */
+    fun hasActiveMedia(): Boolean {
+        val rmc = castSession?.remoteMediaClient ?: return false
+        return rmc.hasMediaSession()
+    }
+
+    /** Titre du média en cours sur le Chromecast (vide si indisponible). */
+    fun currentMediaTitle(): String {
+        val rmc = castSession?.remoteMediaClient ?: return ""
+        val info = rmc.mediaInfo ?: return ""
+        return info.metadata?.getString(MediaMetadata.KEY_TITLE) ?: ""
+    }
+
+    // ─── Cast ─────────────────────────────────────────────────────────
 
     private fun detectContentType(streamUrl: String): String {
         return when {
@@ -162,22 +178,17 @@ class CastManager(context: Context) {
 
     // ─── Volume ───────────────────────────────────────────────────────
 
-    /** Volume courant du Chromecast (0.0 à 1.0), 0 si indisponible. */
     fun getVolume(): Double =
         try { castSession?.volume ?: 0.0 } catch (e: Exception) { 0.0 }
 
-    /** Règle le volume du Chromecast (0.0 à 1.0). */
     fun setVolume(level: Double) {
         try {
             castSession?.volume = level.coerceIn(0.0, 1.0)
         } catch (e: Exception) {
-            // session absente ou volume non réglable
         }
     }
 
-    /** Ajuste le volume de delta (±), utilisé par les boutons physiques. */
     fun adjustVolume(delta: Double) {
-        val current = getVolume()
-        setVolume(current + delta)
+        setVolume(getVolume() + delta)
     }
 }

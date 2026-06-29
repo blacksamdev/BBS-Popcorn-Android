@@ -21,15 +21,16 @@ import io.github.blacksamdev.popcorn.bridge.HistoryBridge
 import io.github.blacksamdev.popcorn.bridge.ResumeBridge
 import io.github.blacksamdev.popcorn.bridge.YtdlpBridge
 import io.github.blacksamdev.popcorn.databinding.ActivityMainBinding
+import io.github.blacksamdev.popcorn.player.CastManager
 import kotlinx.coroutines.launch
 
 /**
  * MainActivity — v0.3 : WebView YouTube + historique + réglages + reprise.
  *
- * Réglages (⚙) :
- * - Qualité vidéo cible
- * - SponsorBlock : DÉSACTIVÉ par défaut. L'application ne transmet rien
- *   à un service tiers tant que l'utilisateur ne l'active pas explicitement.
+ * Cast : l'icône cast ouvre le dialog natif Google pour CHOISIR un appareil.
+ * Mais si une session BBS Popcorn est déjà active avec un média en cours,
+ * le clic ouvre NOTRE télécommande (CastControlActivity) au lieu du dialog,
+ * comme l'app YouTube officielle.
  */
 class MainActivity : AppCompatActivity() {
 
@@ -44,8 +45,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private lateinit var binding: ActivityMainBinding
+    private var castManager: CastManager? = null
 
-    // Anti double-déclenchement (les deux hooks peuvent voir la même URL)
     private var lastInterceptedId: String? = null
     private var lastInterceptedAt: Long = 0L
 
@@ -53,33 +54,46 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Init Chaquopy (une seule fois pour toute l'app)
         YtdlpBridge.init(applicationContext)
         HistoryBridge.init(applicationContext)
         ResumeBridge.init(applicationContext)
 
-        // Init Cast SDK
         CastContext.getSharedInstance(applicationContext)
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Bouton Cast dans la barre pOpcOrn
+        // Bouton Cast natif
         CastButtonFactory.setUpMediaRouteButton(
             applicationContext, binding.mediaRouteButton
         )
 
-        // Bouton historique
+        // CastManager pour détecter une session active et son média
+        castManager = CastManager(this).also { it.register() }
+
+        // Interception du clic cast via un overlay transparent au-dessus du bouton.
+        // Si média BBS actif → notre télécommande ; sinon → dialog natif (touch relayé).
+        binding.castOverlay.setOnClickListener {
+            val cm = castManager
+            if (cm?.isConnected == true && cm.hasActiveMedia()) {
+                val ctrl = Intent(this, CastControlActivity::class.java).apply {
+                    putExtra(CastControlActivity.EXTRA_TITLE, cm.currentMediaTitle())
+                }
+                startActivity(ctrl)
+            } else {
+                // Pas de média → on déclenche le dialog natif du MediaRouteButton
+                binding.mediaRouteButton.performClick()
+            }
+        }
+
         binding.btnHistory.setOnClickListener {
             startActivity(Intent(this, HistoryActivity::class.java))
         }
 
-        // Bouton réglages
         binding.btnQuality.setOnClickListener { showSettingsDialog() }
 
         setupWebView()
 
-        // Retour : navigation arrière dans la WebView avant de quitter l'app
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (binding.webView.canGoBack()) {
@@ -90,7 +104,6 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        // Partage depuis l'app YouTube officielle (Intent ACTION_SEND)
         if (!handleShareIntent(intent)) {
             binding.webView.loadUrl(YOUTUBE_HOME)
         }
@@ -112,7 +125,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun sponsorBlockEnabled(): Boolean {
-        return prefs().getBoolean(PREF_SPONSORBLOCK, false)  // désactivé par défaut
+        return prefs().getBoolean(PREF_SPONSORBLOCK, false)
     }
 
     private fun showSettingsDialog() {
@@ -159,7 +172,6 @@ class MainActivity : AppCompatActivity() {
     private fun toggleSponsorBlock() {
         val newState = !sponsorBlockEnabled()
         if (newState) {
-            // Activation : informer l'utilisateur de la transmission tierce
             AlertDialog.Builder(this)
                 .setTitle(getString(R.string.settings_sponsorblock))
                 .setMessage(getString(R.string.settings_sb_consent))
@@ -193,15 +205,12 @@ class MainActivity : AppCompatActivity() {
             mediaPlaybackRequiresUserGesture = true
         }
 
-        // Cookies persistants : l'utilisateur reste connecté à son compte
         CookieManager.getInstance().apply {
             setAcceptCookie(true)
             setAcceptThirdPartyCookies(webView, true)
         }
 
         webView.webViewClient = object : WebViewClient() {
-
-            // Navigations classiques (liens, redirections)
             override fun shouldOverrideUrlLoading(
                 view: WebView,
                 request: WebResourceRequest
@@ -209,12 +218,11 @@ class MainActivity : AppCompatActivity() {
                 val url = request.url.toString()
                 if (isWatchUrl(url)) {
                     interceptVideo(url, navigatedInWebView = false)
-                    return true // on bloque le chargement de la page de lecture
+                    return true
                 }
                 return false
             }
 
-            // Navigations SPA (YouTube change l'URL en JavaScript)
             override fun doUpdateVisitedHistory(
                 view: WebView,
                 url: String,
@@ -228,16 +236,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Détecte une URL de lecture vidéo YouTube.
-     */
     private fun isWatchUrl(url: String): Boolean {
         return url.contains("/watch?v=") || url.contains("youtu.be/")
     }
 
-    /**
-     * Extrait le video_id pour le debounce.
-     */
     private fun extractVideoId(url: String): String? {
         val watchMatch = Regex("""[?&]v=([A-Za-z0-9_-]{6,})""").find(url)
         if (watchMatch != null) return watchMatch.groupValues[1]
@@ -245,15 +247,9 @@ class MainActivity : AppCompatActivity() {
         return shortMatch?.groupValues?.get(1)
     }
 
-    /**
-     * Interception : bloque la lecture YouTube et lance la chaîne BBS.
-     * navigatedInWebView = true si la SPA a déjà navigué vers la page de
-     * lecture → on fait goBack() pour revenir à la liste.
-     */
     private fun interceptVideo(url: String, navigatedInWebView: Boolean) {
         val videoId = extractVideoId(url) ?: return
 
-        // Debounce : les deux hooks peuvent intercepter la même navigation
         val now = System.currentTimeMillis()
         if (videoId == lastInterceptedId && now - lastInterceptedAt < INTERCEPT_DEBOUNCE_MS) {
             return
@@ -262,7 +258,6 @@ class MainActivity : AppCompatActivity() {
         lastInterceptedAt = now
 
         if (navigatedInWebView) {
-            // La SPA a déjà basculé sur la page de lecture : on coupe court
             binding.webView.stopLoading()
             if (binding.webView.canGoBack()) {
                 binding.webView.goBack()
@@ -309,7 +304,6 @@ class MainActivity : AppCompatActivity() {
                 return@launch
             }
 
-            // Historique : enregistrer la lecture
             HistoryBridge.add(cleanUrl, info.title)
 
             val playerIntent = Intent(this@MainActivity, PlayerActivity::class.java).apply {
@@ -336,6 +330,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        castManager?.unregister()
+        castManager = null
         binding.webView.destroy()
         super.onDestroy()
     }

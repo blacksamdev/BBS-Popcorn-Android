@@ -73,6 +73,18 @@
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
 
+        <!-- Overlay transparent pour intercepter le clic cast :
+             si média BBS actif → notre télécommande ; sinon → dialog natif -->
+        <View
+            android:id="@+id/castOverlay"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="@android:color/transparent"
+            app:layout_constraintBottom_toBottomOf="@id/mediaRouteButton"
+            app:layout_constraintEnd_toEndOf="@id/mediaRouteButton"
+            app:layout_constraintStart_toStartOf="@id/mediaRouteButton"
+            app:layout_constraintTop_toTopOf="@id/mediaRouteButton" />
+
     </androidx.constraintlayout.widget.ConstraintLayout>
 
     <!-- WebView YouTube -->

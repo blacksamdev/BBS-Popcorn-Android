@@ -5,158 +5,242 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/popcorn_slate"
-    android:padding="24dp">
+    android:padding="20dp">
 
-    <!-- Icône cast -->
-    <ImageView
-        android:id="@+id/imageCast"
-        android:layout_width="64dp"
-        android:layout_height="64dp"
-        android:layout_marginTop="32dp"
-        android:src="@android:drawable/stat_sys_speakerphone"
-        app:tint="@color/popcorn_red"
-        app:layout_constraintEnd_toEndOf="parent"
+    <!-- Header : flèche fermer + "En écoute" -->
+    <ImageButton
+        android:id="@+id/btnClose"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:src="@android:drawable/arrow_down_float"
+        app:tint="@color/popcorn_beige"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- Appareil -->
     <TextView
-        android:id="@+id/textDevice"
+        android:id="@+id/textHeader"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:textColor="@color/popcorn_beige"
-        android:textSize="14sp"
+        android:layout_marginStart="8dp"
+        android:text="@string/cast_now_playing"
+        android:textColor="@color/popcorn_cream"
+        android:textSize="18sp"
+        app:layout_constraintBottom_toBottomOf="@id/btnClose"
+        app:layout_constraintStart_toEndOf="@id/btnClose"
+        app:layout_constraintTop_toTopOf="@id/btnClose" />
+
+    <!-- Visualiseur / icône centrale -->
+    <ImageView
+        android:id="@+id/imageCast"
+        android:layout_width="80dp"
+        android:layout_height="80dp"
+        android:layout_marginTop="48dp"
+        android:src="@android:drawable/ic_media_play"
+        app:tint="@color/popcorn_red"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/imageCast" />
+        app:layout_constraintTop_toBottomOf="@id/btnClose" />
 
     <!-- Titre vidéo -->
     <TextView
         android:id="@+id/textTitle"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
+        android:layout_marginTop="40dp"
         android:gravity="center"
-        android:maxLines="3"
+        android:maxLines="2"
         android:ellipsize="end"
         android:textColor="@color/popcorn_cream"
-        android:textSize="18sp"
-        android:textStyle="bold"
+        android:textSize="22sp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/textDevice" />
+        app:layout_constraintTop_toBottomOf="@id/imageCast" />
 
-    <!-- Barre de progression -->
+    <!-- Timeline -->
     <SeekBar
         android:id="@+id/seekBar"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginTop="48dp"
+        android:layout_marginTop="40dp"
         android:progressTint="@color/popcorn_red"
         android:thumbTint="@color/popcorn_red"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/textTitle" />
 
-    <!-- Position -->
     <TextView
         android:id="@+id/textPosition"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="0:00"
-        android:textColor="@color/popcorn_cream"
-        android:textSize="13sp"
+        android:textColor="@color/popcorn_beige"
+        android:textSize="14sp"
         app:layout_constraintStart_toStartOf="@id/seekBar"
         app:layout_constraintTop_toBottomOf="@id/seekBar" />
 
-    <!-- Durée -->
     <TextView
         android:id="@+id/textDuration"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="0:00"
-        android:textColor="@color/popcorn_cream"
-        android:textSize="13sp"
+        android:textColor="@color/popcorn_beige"
+        android:textSize="14sp"
         app:layout_constraintEnd_toEndOf="@id/seekBar"
         app:layout_constraintTop_toBottomOf="@id/seekBar" />
 
-    <!-- Sauts rapides -->
+    <!-- Rangée de contrôles : −30 · play/pause · +30 -->
     <LinearLayout
-        android:id="@+id/rowSeek"
+        android:id="@+id/rowControls"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="40dp"
+        android:layout_marginTop="32dp"
+        android:gravity="center_vertical"
         android:orientation="horizontal"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/textPosition">
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnBack30"
-            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="−30"
-            android:textColor="@color/popcorn_cream"
-            app:strokeColor="@color/popcorn_red" />
+        <!-- −30 -->
+        <FrameLayout
+            android:layout_width="56dp"
+            android:layout_height="56dp">
+            <ImageButton
+                android:id="@+id/btnBack30"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@android:drawable/ic_media_rew"
+                app:tint="@color/popcorn_cream" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:text="30"
+                android:textColor="@color/popcorn_slate"
+                android:textSize="9sp"
+                android:textStyle="bold" />
+        </FrameLayout>
 
-        <com.google.android.material.button.MaterialButton
+        <!-- −10 -->
+        <ImageButton
             android:id="@+id/btnBack10"
-            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:text="−10"
-            android:textColor="@color/popcorn_cream"
-            app:strokeColor="@color/popcorn_red" />
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="4dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_media_previous"
+            app:tint="@color/popcorn_beige" />
 
-        <com.google.android.material.button.MaterialButton
+        <!-- Play/Pause central (gros bouton rouge) -->
+        <ImageButton
+            android:id="@+id/btnPlayPause"
+            android:layout_width="88dp"
+            android:layout_height="88dp"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="12dp"
+            android:background="@drawable/bg_cast_play"
+            android:src="@android:drawable/ic_media_pause"
+            app:tint="@color/popcorn_cream" />
+
+        <!-- +10 -->
+        <ImageButton
             android:id="@+id/btnFwd10"
-            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:text="+10"
-            android:textColor="@color/popcorn_cream"
-            app:strokeColor="@color/popcorn_red" />
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginEnd="4dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_media_next"
+            app:tint="@color/popcorn_beige" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnFwd30"
-            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:text="+30"
-            android:textColor="@color/popcorn_cream"
-            app:strokeColor="@color/popcorn_red" />
+        <!-- +30 -->
+        <FrameLayout
+            android:layout_width="56dp"
+            android:layout_height="56dp">
+            <ImageButton
+                android:id="@+id/btnFwd30"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@android:drawable/ic_media_ff"
+                app:tint="@color/popcorn_cream" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:text="30"
+                android:textColor="@color/popcorn_slate"
+                android:textSize="9sp"
+                android:textStyle="bold" />
+        </FrameLayout>
 
     </LinearLayout>
 
-    <!-- Play/Pause central -->
-    <ImageButton
-        android:id="@+id/btnPlayPause"
-        android:layout_width="72dp"
-        android:layout_height="72dp"
-        android:layout_marginTop="32dp"
-        android:background="@android:color/transparent"
-        android:src="@android:drawable/ic_media_pause"
-        app:tint="@color/popcorn_cream"
+    <!-- Barre de volume style "pilule" : icône + % intégrés -->
+    <FrameLayout
+        android:id="@+id/volumeContainer"
+        android:layout_width="0dp"
+        android:layout_height="56dp"
+        android:layout_marginTop="40dp"
+        android:background="@drawable/bg_cast_volume"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/rowSeek" />
+        app:layout_constraintTop_toBottomOf="@id/rowControls">
 
-    <!-- Stop -->
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/btnStop"
+        <SeekBar
+            android:id="@+id/volumeBar"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:paddingStart="0dp"
+            android:paddingEnd="0dp"
+            android:progressDrawable="@drawable/volume_progress"
+            android:thumb="@null"
+            android:splitTrack="false" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical|start"
+            android:layout_marginStart="20dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@android:drawable/ic_lock_silent_mode_off"
+                app:tint="@color/popcorn_cream" />
+
+            <TextView
+                android:id="@+id/textVolume"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:text="0 %"
+                android:textColor="@color/popcorn_cream"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+        </LinearLayout>
+
+    </FrameLayout>
+
+    <!-- Appareil (pilule) -->
+    <TextView
+        android:id="@+id/textDevice"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="24dp"
-        android:backgroundTint="@color/popcorn_red"
-        android:text="@string/cast_stop"
-        android:textColor="@color/popcorn_cream"
+        android:background="@drawable/bg_cast_device"
+        android:drawableStart="@android:drawable/ic_menu_share"
+        android:drawablePadding="10dp"
+        android:paddingHorizontal="24dp"
+        android:paddingVertical="12dp"
+        android:textColor="@color/popcorn_beige"
+        android:textSize="15sp"
+        app:drawableTint="@color/popcorn_beige"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/btnPlayPause" />
+        app:layout_constraintTop_toBottomOf="@id/volumeContainer" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

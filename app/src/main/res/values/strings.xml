@@ -24,4 +24,6 @@
     <string name="cast_stop">Arrêter le cast</string>
     <string name="cast_on_device">Sur %1$s</string>
     <string name="cast_disconnected">Cast déconnecté</string>
+    <string name="cast_now_playing">En écoute</string>
+    <string name="cast_device_fallback">Chromecast</string>
 </resources>

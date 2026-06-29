@@ -18,6 +18,7 @@ import com.google.android.gms.cast.framework.media.RemoteMediaClient
  * - Envoi du stream URL vers le Chromecast
  * - Détection du type de flux (HLS vs MP4)
  * - Contrôles de lecture : play/pause/stop, seek absolu, seek relatif (±N s)
+ * - Contrôle du volume (barre + boutons physiques)
  * - Suivi de progression en temps réel (position / durée)
  * - Callbacks connect/disconnect
  */
@@ -56,7 +57,6 @@ class CastManager(context: Context) {
         override fun onSessionSuspended(session: CastSession, reason: Int) {}
     }
 
-    // Progress listener du RemoteMediaClient (mise à jour ~toutes les secondes)
     private val progressListener =
         RemoteMediaClient.ProgressListener { positionMs, durationMs ->
             onProgress?.invoke(positionMs, durationMs)
@@ -138,15 +138,12 @@ class CastManager(context: Context) {
         if (rmc.isPlaying) rmc.pause() else rmc.play()
     }
 
-    /** Position approximative courante en ms (0 si indisponible). */
     fun currentPositionMs(): Long =
         castSession?.remoteMediaClient?.approximateStreamPosition ?: 0L
 
-    /** Durée du flux en ms (0 si indisponible). */
     fun durationMs(): Long =
         castSession?.remoteMediaClient?.streamDuration ?: 0L
 
-    /** Se déplace à une position absolue (ms). */
     fun seekTo(positionMs: Long) {
         val rmc = castSession?.remoteMediaClient ?: return
         val opts = MediaSeekOptions.Builder()
@@ -155,12 +152,32 @@ class CastManager(context: Context) {
         rmc.seek(opts)
     }
 
-    /** Se déplace de deltaMs depuis la position courante (±). */
     fun seekBy(deltaMs: Long) {
         val rmc = castSession?.remoteMediaClient ?: return
         val dur = rmc.streamDuration
         val target = (rmc.approximateStreamPosition + deltaMs)
             .coerceIn(0L, if (dur > 0) dur else Long.MAX_VALUE)
         seekTo(target)
+    }
+
+    // ─── Volume ───────────────────────────────────────────────────────
+
+    /** Volume courant du Chromecast (0.0 à 1.0), 0 si indisponible. */
+    fun getVolume(): Double =
+        try { castSession?.volume ?: 0.0 } catch (e: Exception) { 0.0 }
+
+    /** Règle le volume du Chromecast (0.0 à 1.0). */
+    fun setVolume(level: Double) {
+        try {
+            castSession?.volume = level.coerceIn(0.0, 1.0)
+        } catch (e: Exception) {
+            // session absente ou volume non réglable
+        }
+    }
+
+    /** Ajuste le volume de delta (±), utilisé par les boutons physiques. */
+    fun adjustVolume(delta: Double) {
+        val current = getVolume()
+        setVolume(current + delta)
     }
 }

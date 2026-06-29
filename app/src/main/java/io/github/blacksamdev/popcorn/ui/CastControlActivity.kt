@@ -1,6 +1,7 @@
 package io.github.blacksamdev.popcorn.ui
 
 import android.os.Bundle
+import android.view.KeyEvent
 import android.widget.SeekBar
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -10,27 +11,26 @@ import io.github.blacksamdev.popcorn.player.CastManager
 
 /**
  * CastControlActivity — télécommande de lecture pour le cast Chromecast.
+ * Disposition inspirée de la remote native, habillée aux couleurs pOpcOrn.
  *
- * - Play / pause
- * - Sauts rapides : −30 / −10 / +10 / +30 s (cumulables en cliquant plusieurs fois)
- * - Barre de progression (seek libre) avec minutage qui s'affiche au toucher
- * - Position / durée mises à jour en temps réel via le ProgressListener
- *
- * Les contrôles natifs (notification / écran verrouillé) sont fournis
- * automatiquement par le Cast SDK dès que le seek est supporté.
+ * - Play / pause (gros bouton central)
+ * - Sauts rapides : −30 / −10 / +10 / +30 s (cumulables)
+ * - Timeline (seek libre) avec minutage au toucher
+ * - Barre de volume "pilule" + boutons volume physiques, avec % affiché
  */
 class CastControlActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_STREAM_URL = "extra_stream_url"
         const val EXTRA_TITLE = "extra_title"
+        private const val VOLUME_STEP = 0.05
     }
 
     private lateinit var binding: ActivityCastControlBinding
     private var castManager: CastManager? = null
 
-    // true tant que l'utilisateur fait glisser la barre (on n'écrase pas sa valeur)
     private var userSeeking = false
+    private var userVoluming = false
     private var lastDurationMs = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -54,14 +54,15 @@ class CastControlActivity : AppCompatActivity() {
             }
         }
 
-        binding.textDevice.text = castManager?.deviceName?.let {
-            getString(R.string.cast_on_device, it)
-        } ?: ""
+        binding.textDevice.text = castManager?.deviceName ?: getString(R.string.cast_device_fallback)
 
         setupControls()
+        initVolumeBar()
     }
 
     private fun setupControls() {
+        binding.btnClose.setOnClickListener { finish() }
+
         binding.btnPlayPause.setOnClickListener {
             castManager?.togglePlayPause()
             updatePlayPauseIcon()
@@ -72,23 +73,15 @@ class CastControlActivity : AppCompatActivity() {
         binding.btnFwd10.setOnClickListener { castManager?.seekBy(+10_000) }
         binding.btnFwd30.setOnClickListener { castManager?.seekBy(+30_000) }
 
-        binding.btnStop.setOnClickListener {
-            castManager?.stop()
-            finish()
-        }
-
         binding.seekBar.max = 1000
         binding.seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar, progress: Int, fromUser: Boolean) {
                 if (fromUser && lastDurationMs > 0) {
-                    // Affiche le minutage cible pendant le glissement
                     val targetMs = lastDurationMs * progress / 1000
                     binding.textPosition.text = formatMs(targetMs)
                 }
             }
-            override fun onStartTrackingTouch(sb: SeekBar) {
-                userSeeking = true
-            }
+            override fun onStartTrackingTouch(sb: SeekBar) { userSeeking = true }
             override fun onStopTrackingTouch(sb: SeekBar) {
                 userSeeking = false
                 if (lastDurationMs > 0) {
@@ -97,6 +90,44 @@ class CastControlActivity : AppCompatActivity() {
                 }
             }
         })
+
+        binding.volumeBar.max = 100
+        binding.volumeBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar, progress: Int, fromUser: Boolean) {
+                if (fromUser) {
+                    castManager?.setVolume(progress / 100.0)
+                    binding.textVolume.text = "$progress %"
+                }
+            }
+            override fun onStartTrackingTouch(sb: SeekBar) { userVoluming = true }
+            override fun onStopTrackingTouch(sb: SeekBar) { userVoluming = false }
+        })
+    }
+
+    private fun initVolumeBar() {
+        val vol = ((castManager?.getVolume() ?: 0.0) * 100).toInt()
+        binding.volumeBar.progress = vol
+        binding.textVolume.text = "$vol %"
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        return when (keyCode) {
+            KeyEvent.KEYCODE_VOLUME_UP -> {
+                castManager?.adjustVolume(+VOLUME_STEP); refreshVolumeBar(); true
+            }
+            KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                castManager?.adjustVolume(-VOLUME_STEP); refreshVolumeBar(); true
+            }
+            else -> super.onKeyDown(keyCode, event)
+        }
+    }
+
+    private fun refreshVolumeBar() {
+        if (!userVoluming) {
+            val vol = ((castManager?.getVolume() ?: 0.0) * 100).toInt()
+            binding.volumeBar.progress = vol
+            binding.textVolume.text = "$vol %"
+        }
     }
 
     private fun onProgress(posMs: Long, durMs: Long) {
@@ -109,6 +140,7 @@ class CastControlActivity : AppCompatActivity() {
                 binding.seekBar.progress =
                     if (durMs > 0) (posMs * 1000 / durMs).toInt() else 0
             }
+            refreshVolumeBar()
         }
     }
 

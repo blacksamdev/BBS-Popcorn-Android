@@ -111,6 +111,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)  // requis avec launchMode=singleTask
         handleShareIntent(intent)
     }
 

@@ -16,8 +16,10 @@ import io.github.blacksamdev.popcorn.bridge.SponsorBridge
 import io.github.blacksamdev.popcorn.databinding.ActivityPlayerBinding
 import io.github.blacksamdev.popcorn.player.BbsPlayer
 import io.github.blacksamdev.popcorn.player.CastManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 
 /**
  * PlayerActivity — écran de lecture BBS Popcorn Android.
@@ -36,6 +38,10 @@ class PlayerActivity : AppCompatActivity() {
         const val EXTRA_STREAM_URL = "extra_stream_url"
         const val EXTRA_TITLE = "extra_title"
         const val EXTRA_SOURCE_URL = "extra_source_url"
+
+        // Scope hors-lifecycle pour la sauvegarde de position :
+        // survit à la destruction de l'activity, jamais annulé.
+        private val saveScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     }
 
     private lateinit var binding: ActivityPlayerBinding
@@ -143,9 +149,11 @@ class PlayerActivity : AppCompatActivity() {
         val pos = p.currentPositionMs
         val dur = p.durationMs
         if (pos <= 0) return
-        // runBlocking court : écriture JSON locale, appelée à la fermeture
-        runBlocking {
-            ResumeBridge.setMs(sourceUrl, pos, if (dur > 0) dur else 0L)
+        // Écriture asynchrone : scope indépendant du lifecycle pour survivre
+        // à la destruction de l'activity (petit fichier JSON local, très rapide)
+        val url = sourceUrl
+        saveScope.launch {
+            ResumeBridge.setMs(url, pos, if (dur > 0) dur else 0L)
         }
     }
 

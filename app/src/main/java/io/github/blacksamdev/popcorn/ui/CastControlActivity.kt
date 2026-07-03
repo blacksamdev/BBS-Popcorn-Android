@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.view.KeyEvent
 import android.widget.SeekBar
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import io.github.blacksamdev.popcorn.R
 import io.github.blacksamdev.popcorn.databinding.ActivityCastControlBinding
@@ -75,6 +76,19 @@ class CastControlActivity : AppCompatActivity() {
 
     private fun setupControls() {
         binding.btnClose.setOnClickListener { finish() }
+
+        // Pilule appareil : tap → confirmation → arrêter la diffusion
+        binding.textDevice.setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle(getString(R.string.cast_disconnect_title))
+                .setMessage(getString(R.string.cast_disconnect_message))
+                .setPositiveButton(android.R.string.ok) { _, _ ->
+                    castManager?.endSession()
+                    finish()
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .show()
+        }
 
         binding.btnPlayPause.setOnClickListener {
             castManager?.togglePlayPause()

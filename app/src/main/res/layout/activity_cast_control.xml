@@ -191,6 +191,8 @@
             android:id="@+id/volumeBar"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:minHeight="56dp"
+            android:maxHeight="56dp"
             android:paddingStart="0dp"
             android:paddingEnd="0dp"
             android:progressDrawable="@drawable/volume_progress"

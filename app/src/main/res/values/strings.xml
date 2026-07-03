@@ -26,4 +26,6 @@
     <string name="cast_disconnected">Cast déconnecté</string>
     <string name="cast_now_playing">En écoute</string>
     <string name="cast_device_fallback">Chromecast</string>
+    <string name="cast_disconnect_title">Arrêter la diffusion</string>
+    <string name="cast_disconnect_message">Arrêter la lecture et se déconnecter du Chromecast ?</string>
 </resources>

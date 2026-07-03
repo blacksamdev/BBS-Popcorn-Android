@@ -191,4 +191,17 @@ class CastManager(context: Context) {
     fun adjustVolume(delta: Double) {
         setVolume(getVolume() + delta)
     }
+
+    // ─── Déconnexion ──────────────────────────────────────────────────
+
+    /**
+     * Termine la session cast ("Arrêter la diffusion") :
+     * arrête la lecture sur le Chromecast et déconnecte l'app.
+     */
+    fun endSession() {
+        try {
+            castContext.sessionManager.endCurrentSession(true)
+        } catch (e: Exception) {
+        }
+    }
 }

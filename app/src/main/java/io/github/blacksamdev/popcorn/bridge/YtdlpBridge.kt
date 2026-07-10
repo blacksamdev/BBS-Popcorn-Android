@@ -70,6 +70,11 @@ object YtdlpBridge {
                 }
             }
             if (map.isEmpty()) {
+                // Plus aucun cookie (déconnexion YouTube) : purger le fichier
+                // sur disque pour ne pas laisser traîner d'anciens jetons.
+                if (lastCookieFilePath != null || lastCookieHash != 0) {
+                    try { cookiesModule.callAttr("clear_cookies") } catch (_: Exception) {}
+                }
                 lastCookieHash = 0
                 lastCookieFilePath = null
                 return null

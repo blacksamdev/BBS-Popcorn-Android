@@ -201,9 +201,12 @@ class MainActivity : AppCompatActivity() {
         val webView = binding.webView
 
         webView.settings.apply {
-            javaScriptEnabled = true
-            domStorageEnabled = true
+            javaScriptEnabled = true          // requis par YouTube
+            domStorageEnabled = true          // requis par YouTube
             mediaPlaybackRequiresUserGesture = true
+            // Durcissement : la WebView ne doit jamais lire le stockage local
+            allowFileAccess = false
+            allowContentAccess = false
         }
 
         CookieManager.getInstance().apply {
@@ -221,6 +224,15 @@ class MainActivity : AppCompatActivity() {
                     interceptVideo(url, navigatedInWebView = false)
                     return true
                 }
+                // Garde-fou : la WebView reste sur les domaines YouTube/Google.
+                // Tout lien externe s'ouvre dans le navigateur système.
+                if (!isAllowedHost(request.url.host)) {
+                    try {
+                        startActivity(Intent(Intent.ACTION_VIEW, request.url))
+                    } catch (_: Exception) {
+                    }
+                    return true
+                }
                 return false
             }
 
@@ -235,6 +247,21 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    /**
+     * Domaines autorisés dans la WebView : YouTube et l'écosystème Google
+     * nécessaire (connexion au compte, ressources statiques).
+     */
+    private fun isAllowedHost(host: String?): Boolean {
+        if (host == null) return false
+        val h = host.lowercase()
+        val allowed = listOf(
+            "youtube.com", "youtu.be", "google.com", "googleusercontent.com",
+            "googlevideo.com", "ytimg.com", "ggpht.com", "gstatic.com",
+            "googleapis.com", "googletagmanager.com", "accounts.google.fr",
+        )
+        return allowed.any { h == it || h.endsWith(".$it") }
     }
 
     private fun isWatchUrl(url: String): Boolean {

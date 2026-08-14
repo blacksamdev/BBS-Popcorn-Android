@@ -338,6 +338,7 @@ class MainActivity : AppCompatActivity() {
                 putExtra(PlayerActivity.EXTRA_STREAM_URL, info.streamUrl)
                 putExtra(PlayerActivity.EXTRA_TITLE, info.title)
                 putExtra(PlayerActivity.EXTRA_SOURCE_URL, cleanUrl)
+                putExtra(PlayerActivity.EXTRA_IS_LIVE, info.isLive)
             }
             startActivity(playerIntent)
         }

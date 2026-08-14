@@ -101,6 +101,12 @@ class CastManager(context: Context) {
         return rmc.hasMediaSession()
     }
 
+    /** Vrai si le média en cours sur le Chromecast est un direct. */
+    fun isLiveStream(): Boolean {
+        val info = castSession?.remoteMediaClient?.mediaInfo ?: return false
+        return info.streamType == MediaInfo.STREAM_TYPE_LIVE
+    }
+
     /** Titre du média en cours sur le Chromecast (vide si indisponible). */
     fun currentMediaTitle(): String {
         val rmc = castSession?.remoteMediaClient ?: return ""
@@ -120,7 +126,7 @@ class CastManager(context: Context) {
         }
     }
 
-    fun loadMedia(streamUrl: String, title: String = "") {
+    fun loadMedia(streamUrl: String, title: String = "", isLive: Boolean = false) {
         val session = castSession ?: return
         val remoteClient: RemoteMediaClient = session.remoteMediaClient ?: return
 
@@ -128,8 +134,12 @@ class CastManager(context: Context) {
         val metadata = MediaMetadata(MediaMetadata.MEDIA_TYPE_MOVIE).apply {
             putString(MediaMetadata.KEY_TITLE, title)
         }
+        // Un direct doit être déclaré LIVE : en BUFFERED, le receiver cherche
+        // une durée inexistante et reste muet.
+        val streamType = if (isLive) MediaInfo.STREAM_TYPE_LIVE
+                         else MediaInfo.STREAM_TYPE_BUFFERED
         val mediaInfo = MediaInfo.Builder(streamUrl)
-            .setStreamType(MediaInfo.STREAM_TYPE_BUFFERED)
+            .setStreamType(streamType)
             .setContentType(contentType)
             .setMetadata(metadata)
             .build()

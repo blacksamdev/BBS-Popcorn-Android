@@ -24,6 +24,7 @@ class CastControlActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_STREAM_URL = "extra_stream_url"
         const val EXTRA_TITLE = "extra_title"
+        const val EXTRA_IS_LIVE = "extra_is_live"
         private const val VOLUME_STEP = 0.05
     }
 
@@ -68,7 +69,21 @@ class CastControlActivity : AppCompatActivity() {
         }
         binding.textTitle.text = title
 
-        binding.textDevice.text = castManager?.deviceName ?: getString(R.string.cast_device_fallback)
+        val device = castManager?.deviceName ?: getString(R.string.cast_device_fallback)
+        binding.textDevice.text = getString(R.string.cast_disconnect_label, device)
+
+        // Mode direct : timeline et sauts sans objet → badge EN DIRECT
+        val isLive = intent.getBooleanExtra(EXTRA_IS_LIVE, false) ||
+                castManager?.isLiveStream() == true
+        if (isLive) {
+            binding.seekBar.visibility = android.view.View.GONE
+            binding.rowControls.visibility = android.view.View.GONE
+            binding.textDuration.visibility = android.view.View.GONE
+            binding.textPosition.text = getString(R.string.cast_live_badge)
+            binding.textPosition.setTextColor(
+                androidx.core.content.ContextCompat.getColor(this, R.color.popcorn_red)
+            )
+        }
 
         setupControls()
         initVolumeBar()
@@ -159,15 +174,16 @@ class CastControlActivity : AppCompatActivity() {
 
     private fun onProgress(posMs: Long, durMs: Long) {
         runOnUiThread {
+            updatePlayPauseIcon()
+            refreshVolumeBar()
+            if (binding.seekBar.visibility != android.view.View.VISIBLE) return@runOnUiThread
             lastDurationMs = durMs
             binding.textDuration.text = formatMs(durMs)
-            updatePlayPauseIcon()
             if (!userSeeking) {
                 binding.textPosition.text = formatMs(posMs)
                 binding.seekBar.progress =
                     if (durMs > 0) (posMs * 1000 / durMs).toInt() else 0
             }
-            refreshVolumeBar()
         }
     }
 

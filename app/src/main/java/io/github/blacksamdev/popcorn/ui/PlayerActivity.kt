@@ -38,6 +38,7 @@ class PlayerActivity : AppCompatActivity() {
         const val EXTRA_STREAM_URL = "extra_stream_url"
         const val EXTRA_TITLE = "extra_title"
         const val EXTRA_SOURCE_URL = "extra_source_url"
+        const val EXTRA_IS_LIVE = "extra_is_live"
 
         // Scope hors-lifecycle pour la sauvegarde de position :
         // survit à la destruction de l'activity, jamais annulé.
@@ -81,10 +82,12 @@ class PlayerActivity : AppCompatActivity() {
 
         // Session Chromecast active → on caste et on ouvre la télécommande
         if (castManager?.isConnected == true) {
-            castManager?.loadMedia(streamUrl, title)
+            val isLive = intent.getBooleanExtra(EXTRA_IS_LIVE, false)
+            castManager?.loadMedia(streamUrl, title, isLive)
             val ctrl = Intent(this, CastControlActivity::class.java).apply {
                 putExtra(CastControlActivity.EXTRA_STREAM_URL, streamUrl)
                 putExtra(CastControlActivity.EXTRA_TITLE, title)
+                putExtra(CastControlActivity.EXTRA_IS_LIVE, isLive)
             }
             startActivity(ctrl)
             finish()

@@ -92,6 +92,7 @@ def _try_extract(url: str, quality: str, cookiefile: str = None) -> dict | None:
         "stream_url": stream_url,
         "thumbnail": info.get("thumbnail"),
         "duration_s": info.get("duration") or 0,
+        "is_live": bool(info.get("is_live")),
     }
 
 

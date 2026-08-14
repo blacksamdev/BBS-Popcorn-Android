@@ -28,6 +28,7 @@ object YtdlpBridge {
         val streamUrl: String,
         val thumbnailUrl: String?,
         val durationS: Long,
+        val isLive: Boolean = false,
     )
 
     private val COOKIE_DOMAINS = listOf(
@@ -129,8 +130,9 @@ object YtdlpBridge {
                 val title = map[PyObject.fromJava("title")]?.toString() ?: ""
                 val thumbnail = map[PyObject.fromJava("thumbnail")]?.toString()
                 val duration = map[PyObject.fromJava("duration_s")]?.toLong() ?: 0L
+                val isLive = map[PyObject.fromJava("is_live")]?.toBoolean() ?: false
 
-                VideoInfo(title, streamUrl, thumbnail, duration)
+                VideoInfo(title, streamUrl, thumbnail, duration, isLive)
             } catch (e: Exception) {
                 null
             }

@@ -26,10 +26,16 @@ class CastControlActivity : AppCompatActivity() {
         const val EXTRA_TITLE = "extra_title"
         const val EXTRA_IS_LIVE = "extra_is_live"
         private const val VOLUME_STEP = 0.05
+        // En deçà de ce retard, on considère qu'on est au bord du direct
+        private const val LIVE_EDGE_TOLERANCE_MS = 10_000L
     }
 
     private lateinit var binding: ActivityCastControlBinding
     private var castManager: CastManager? = null
+
+    // Mode direct
+    private var liveMode = false
+    private var dvrAvailable: Boolean? = null  // null = état non encore appliqué
 
     private var userSeeking = false
     private var userVoluming = false
@@ -72,17 +78,14 @@ class CastControlActivity : AppCompatActivity() {
         val device = castManager?.deviceName ?: getString(R.string.cast_device_fallback)
         binding.textDevice.text = getString(R.string.cast_disconnect_label, device)
 
-        // Mode direct : timeline et sauts sans objet → badge EN DIRECT
-        val isLive = intent.getBooleanExtra(EXTRA_IS_LIVE, false) ||
+        // Mode direct : on conserve play/pause et, si un buffer DVR existe,
+        // la timeline et les sauts (revoir une action, passer un temps mort).
+        liveMode = intent.getBooleanExtra(EXTRA_IS_LIVE, false) ||
                 castManager?.isLiveStream() == true
-        if (isLive) {
-            binding.seekBar.visibility = android.view.View.GONE
-            binding.rowControls.visibility = android.view.View.GONE
+        if (liveMode) {
             binding.textDuration.visibility = android.view.View.GONE
-            binding.textPosition.text = getString(R.string.cast_live_badge)
-            binding.textPosition.setTextColor(
-                androidx.core.content.ContextCompat.getColor(this, R.color.popcorn_red)
-            )
+            binding.btnLive.visibility = android.view.View.VISIBLE
+            applyDvrState(castManager?.liveWindow() != null)
         }
 
         setupControls()
@@ -110,6 +113,11 @@ class CastControlActivity : AppCompatActivity() {
             updatePlayPauseIcon()
         }
 
+        // Retour au bord du direct
+        binding.btnLive.setOnClickListener {
+            castManager?.jumpToLiveEdge()
+        }
+
         binding.btnBack30.setOnClickListener { castManager?.seekBy(-30_000) }
         binding.btnBack10.setOnClickListener { castManager?.seekBy(-10_000) }
         binding.btnFwd10.setOnClickListener { castManager?.seekBy(+10_000) }
@@ -118,17 +126,26 @@ class CastControlActivity : AppCompatActivity() {
         binding.seekBar.max = 1000
         binding.seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar, progress: Int, fromUser: Boolean) {
-                if (fromUser && lastDurationMs > 0) {
-                    val targetMs = lastDurationMs * progress / 1000
-                    binding.textPosition.text = formatMs(targetMs)
+                if (!fromUser) return
+                val win = if (liveMode) castManager?.liveWindow() else null
+                if (win != null) {
+                    val (start, end) = win
+                    val target = start + (end - start) * progress / 1000
+                    binding.textPosition.text = formatDelay(end - target)
+                } else if (lastDurationMs > 0) {
+                    binding.textPosition.text = formatMs(lastDurationMs * progress / 1000)
                 }
             }
             override fun onStartTrackingTouch(sb: SeekBar) { userSeeking = true }
             override fun onStopTrackingTouch(sb: SeekBar) {
                 userSeeking = false
-                if (lastDurationMs > 0) {
-                    val targetMs = lastDurationMs * sb.progress / 1000
-                    castManager?.seekTo(targetMs)
+                val win = if (liveMode) castManager?.liveWindow() else null
+                if (win != null) {
+                    // Direct : la timeline couvre la fenêtre DVR
+                    val (start, end) = win
+                    castManager?.seekTo(start + (end - start) * sb.progress / 1000)
+                } else if (lastDurationMs > 0) {
+                    castManager?.seekTo(lastDurationMs * sb.progress / 1000)
                 }
             }
         })
@@ -176,7 +193,12 @@ class CastControlActivity : AppCompatActivity() {
         runOnUiThread {
             updatePlayPauseIcon()
             refreshVolumeBar()
-            if (binding.seekBar.visibility != android.view.View.VISIBLE) return@runOnUiThread
+
+            if (liveMode) {
+                onProgressLive(posMs)
+                return@runOnUiThread
+            }
+
             lastDurationMs = durMs
             binding.textDuration.text = formatMs(durMs)
             if (!userSeeking) {
@@ -186,6 +208,51 @@ class CastControlActivity : AppCompatActivity() {
             }
         }
     }
+
+    /**
+     * Progression sur un direct : la timeline couvre la fenêtre DVR et
+     * textPosition affiche le retard sur le direct (« ● EN DIRECT » au bord).
+     */
+    private fun onProgressLive(posMs: Long) {
+        val win = castManager?.liveWindow()
+        applyDvrState(win != null)
+        if (win == null) {
+            binding.textPosition.text = getString(R.string.cast_live_badge)
+            binding.btnLive.isSelected = true
+            return
+        }
+        val (start, end) = win
+        val atEdge = posMs >= end - LIVE_EDGE_TOLERANCE_MS
+        binding.btnLive.isSelected = atEdge
+        if (!userSeeking) {
+            binding.textPosition.text =
+                if (atEdge) getString(R.string.cast_live_badge)
+                else formatDelay(end - posMs)
+            binding.seekBar.progress =
+                (((posMs - start).coerceAtLeast(0L) * 1000) / (end - start)).toInt()
+        }
+    }
+
+    /**
+     * Active ou masque les contrôles de navigation selon la présence
+     * d'un buffer DVR (certains directs ne permettent aucun retour arrière).
+     */
+    private fun applyDvrState(available: Boolean) {
+        if (dvrAvailable == available) return
+        dvrAvailable = available
+        val vis = if (available) android.view.View.VISIBLE else android.view.View.GONE
+        binding.seekBar.visibility = vis
+        binding.btnBack30.visibility = vis
+        binding.btnBack10.visibility = vis
+        binding.btnFwd10.visibility = vis
+        binding.btnFwd30.visibility = vis
+        // Le badge direct reste visible même sans DVR (simple indicateur)
+        binding.btnLive.visibility = android.view.View.VISIBLE
+    }
+
+    /** Formate un retard sur le direct : « -1:23 ». */
+    private fun formatDelay(deltaMs: Long): String =
+        "-" + formatMs(deltaMs.coerceAtLeast(0L))
 
     private fun updatePlayPauseIcon() {
         val playing = castManager?.isPlaying == true

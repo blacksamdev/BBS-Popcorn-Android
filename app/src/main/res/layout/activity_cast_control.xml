@@ -79,6 +79,22 @@
         app:layout_constraintStart_toStartOf="@id/seekBar"
         app:layout_constraintTop_toBottomOf="@id/seekBar" />
 
+    <!-- Badge / bouton « retour au direct » (mode live uniquement) -->
+    <TextView
+        android:id="@+id/btnLive"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_live_badge"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="4dp"
+        android:text="@string/cast_live_badge"
+        android:textColor="@color/popcorn_cream"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="@id/seekBar"
+        app:layout_constraintTop_toBottomOf="@id/seekBar" />
+
     <TextView
         android:id="@+id/textDuration"
         android:layout_width="wrap_content"

@@ -180,10 +180,48 @@ class CastManager(context: Context) {
 
     fun seekBy(deltaMs: Long) {
         val rmc = castSession?.remoteMediaClient ?: return
-        val dur = rmc.streamDuration
-        val target = (rmc.approximateStreamPosition + deltaMs)
-            .coerceIn(0L, if (dur > 0) dur else Long.MAX_VALUE)
+        val current = rmc.approximateStreamPosition
+        val win = liveWindow()
+        val target = if (win != null) {
+            // Direct avec DVR : on reste dans la fenêtre disponible
+            (current + deltaMs).coerceIn(win.first, win.second)
+        } else {
+            val dur = rmc.streamDuration
+            (current + deltaMs).coerceIn(0L, if (dur > 0) dur else Long.MAX_VALUE)
+        }
         seekTo(target)
+    }
+
+    // ─── Direct (DVR) ─────────────────────────────────────────────────
+
+    /**
+     * Fenêtre de navigation d'un direct : Pair(débutMs, finMs).
+     * null si le flux n'est pas un direct ou si aucun buffer DVR n'est
+     * disponible (on ne peut alors que suivre le direct en temps réel).
+     */
+    fun liveWindow(): Pair<Long, Long>? {
+        return try {
+            val status = castSession?.remoteMediaClient?.mediaStatus ?: return null
+            val range = status.liveSeekableRange ?: return null
+            val start = range.startTime
+            val end = range.endTime
+            if (end > start) Pair(start, end) else null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /** Saute au bord du direct (reprend la diffusion en temps réel). */
+    fun jumpToLiveEdge() {
+        val rmc = castSession?.remoteMediaClient ?: return
+        try {
+            rmc.seek(
+                MediaSeekOptions.Builder()
+                    .setIsSeekToInfinite(true)
+                    .build()
+            )
+        } catch (e: Exception) {
+        }
     }
 
     // ─── Volume ───────────────────────────────────────────────────────

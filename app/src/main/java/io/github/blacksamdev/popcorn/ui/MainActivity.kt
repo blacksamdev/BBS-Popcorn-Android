@@ -319,14 +319,30 @@ class MainActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             val cleanUrl = YtdlpBridge.prepareUrl(rawUrl)
-            val info = YtdlpBridge.fetchInfo(cleanUrl, quality = currentQuality())
+
+            // Cast actif : il faut un flux progressif (le Chromecast ne peut
+            // pas lire le HLS de YouTube, en-têtes CORS absents côté serveur).
+            val casting = castManager?.isConnected == true
+            val info = YtdlpBridge.fetchInfo(
+                cleanUrl,
+                quality = currentQuality(),
+                progressiveOnly = casting,
+            )
 
             binding.loadingOverlay.visibility = View.GONE
 
             if (info == null) {
+                // En cast, l'absence de progressif signifie presque toujours
+                // un direct en cours : YouTube ne le diffuse qu'en HLS.
+                val (titleRes, msgRes) = if (casting) {
+                    R.string.cast_live_unsupported_title to
+                            R.string.cast_live_unsupported_message
+                } else {
+                    R.string.resolve_fail_title to R.string.resolve_fail_message
+                }
                 AlertDialog.Builder(this@MainActivity)
-                    .setTitle(getString(R.string.resolve_fail_title))
-                    .setMessage(getString(R.string.resolve_fail_message))
+                    .setTitle(getString(titleRes))
+                    .setMessage(getString(msgRes))
                     .setPositiveButton(android.R.string.ok, null)
                     .show()
                 return@launch

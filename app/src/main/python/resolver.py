@@ -50,12 +50,12 @@ def prepare_url(url: str) -> str:
     return url
 
 
-def _opts(quality: str, cookiefile: str = None) -> dict:
+def _opts(quality: str, cookiefile: str = None, progressive_only: bool = False) -> dict:
     opts = {
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
-        "format": _build_format_selector(quality),
+        "format": _build_format_selector(quality, progressive_only),
         "skip_download": True,
     }
     if cookiefile:
@@ -79,8 +79,9 @@ def _extract_stream(info: dict) -> str | None:
     return None
 
 
-def _try_extract(url: str, quality: str, cookiefile: str = None) -> dict | None:
-    with yt_dlp.YoutubeDL(_opts(quality, cookiefile)) as ydl:
+def _try_extract(url: str, quality: str, cookiefile: str = None,
+                 progressive_only: bool = False) -> dict | None:
+    with yt_dlp.YoutubeDL(_opts(quality, cookiefile, progressive_only)) as ydl:
         info = ydl.extract_info(url, download=False)
     if not info:
         return None
@@ -114,10 +115,22 @@ def resolve_stream_url(url: str, quality: str = "1080", cookiefile: str = None) 
     return info["stream_url"] if info else None
 
 
-def fetch_info(url: str, quality: str = "1080", cookiefile: str = None) -> dict | None:
+def fetch_info(url: str, quality: str = "1080", cookiefile: str = None,
+               progressive_only: bool = False) -> dict | None:
+    """
+    Résout titre + flux.
+
+    progressive_only : n'accepte QUE des formats progressifs (MP4 unique,
+    protocole https). Requis pour le cast : le Chromecast lit le HLS via
+    le mécanisme adaptatif du navigateur, qui exige des en-têtes CORS que
+    les serveurs YouTube n'accordent pas à notre receiver. Un MP4 progressif
+    se lit directement, sans cette contrainte.
+    Retourne None si aucun format progressif n'existe (direct en cours).
+    """
     # 1. sans cookies (cas majoritaire)
     try:
-        result = _try_extract(url, quality, cookiefile=None)
+        result = _try_extract(url, quality, cookiefile=None,
+                              progressive_only=progressive_only)
         if result:
             return result
     except Exception as exc:
@@ -125,7 +138,8 @@ def fetch_info(url: str, quality: str = "1080", cookiefile: str = None) -> dict 
     # 2. avec cookiefile (vidéos restreintes)
     if cookiefile:
         try:
-            result = _try_extract(url, quality, cookiefile=cookiefile)
+            result = _try_extract(url, quality, cookiefile=cookiefile,
+                                  progressive_only=progressive_only)
             if result:
                 return result
         except Exception as exc:
@@ -133,23 +147,30 @@ def fetch_info(url: str, quality: str = "1080", cookiefile: str = None) -> dict 
     return None
 
 
-def _build_format_selector(quality: str) -> str:
+def _build_format_selector(quality: str, progressive_only: bool = False) -> str:
     """
-    Sélecteur ANTI-MERGE : uniquement des flux uniques (audio+vidéo intégrés).
+    Sélecteur de format.
 
-    Aucune syntaxe "v+a" → yt-dlp ne tentera jamais de merger (pas de ffmpeg).
-    'b' / 'best' SANS étoile peut déclencher un merge ; on n'utilise donc que
-    des sélecteurs de flux uniques explicites, et 'b*'/'best*' qui autorise
-    yt-dlp à prendre un format unique même non-mergé.
+    Mode normal (lecture locale) : combiné progressif → HLS → filet 'b*'.
+    ExoPlayer lit nativement le HLS, donc tout convient.
 
-    Paliers :
-      1. best[height<=Q][vcodec!=none][acodec!=none]  (combiné progressif)
-      2. best[height<=Q][protocol^=m3u8]              (HLS, lu par Media3)
-      3. b*[height<=Q][vcodec!=none][acodec!=none]    (combiné, variante)
-      4. 18                                           (mp4 360p combiné — filet)
-      5. b*                                           (meilleur flux unique)
+    Mode progressive_only (cast) : UNIQUEMENT des flux progressifs https
+    (audio+vidéo dans un seul fichier MP4). Aucun HLS, aucun DASH : le
+    Chromecast ne peut pas les lire faute d'en-têtes CORS côté YouTube.
+    Les formats 22 (720p) et 18 (360p) sont les progressifs historiques,
+    quasi toujours présents sur une vidéo publiée.
     """
     q = quality if quality in ("2160", "1440", "1080", "720", "480") else "1080"
+
+    if progressive_only:
+        return (
+            f"best[height<={q}][vcodec!=none][acodec!=none][protocol^=https]/"
+            f"b*[height<={q}][vcodec!=none][acodec!=none][protocol^=https]/"
+            f"b*[vcodec!=none][acodec!=none][protocol^=https]/"
+            f"22/"
+            f"18"
+        )
+
     return (
         f"best[height<={q}][vcodec!=none][acodec!=none]/"
         f"best[height<={q}][protocol^=m3u8]/"

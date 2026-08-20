@@ -30,4 +30,6 @@
     <string name="cast_disconnect_message">Arrêter la lecture et se déconnecter du Chromecast ?</string>
     <string name="cast_disconnect_label">Déconnecter · %1$s</string>
     <string name="cast_live_badge">● EN DIRECT</string>
+    <string name="cast_live_unsupported_title">Direct non castable</string>
+    <string name="cast_live_unsupported_message">YouTube ne diffuse les directs en cours qu&#8217;en flux adaptatif, que le Chromecast ne peut pas lire.\n\nDéconnectez le cast pour regarder ce direct sur le téléphone.</string>
 </resources>

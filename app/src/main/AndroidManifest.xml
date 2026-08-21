@@ -3,7 +3,6 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 
     <application
         android:allowBackup="false"
@@ -13,11 +12,6 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.BBSPopcorn">
-
-        <!-- Cast SDK : options de découverte Chromecast -->
-        <meta-data
-            android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
-            android:value="io.github.blacksamdev.popcorn.player.CastOptionsProvider" />
 
         <activity
             android:name=".ui.MainActivity"
@@ -43,10 +37,6 @@
 
         <activity
             android:name=".ui.HistoryActivity"
-            android:screenOrientation="portrait" />
-
-        <activity
-            android:name=".ui.CastControlActivity"
             android:screenOrientation="portrait" />
 
     </application>

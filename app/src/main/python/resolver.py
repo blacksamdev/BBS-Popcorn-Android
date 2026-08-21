@@ -50,12 +50,12 @@ def prepare_url(url: str) -> str:
     return url
 
 
-def _opts(quality: str, cookiefile: str = None, progressive_only: bool = False) -> dict:
+def _opts(quality: str, cookiefile: str = None) -> dict:
     opts = {
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
-        "format": _build_format_selector(quality, progressive_only),
+        "format": _build_format_selector(quality),
         "skip_download": True,
     }
     if cookiefile:
@@ -79,77 +79,12 @@ def _extract_stream(info: dict) -> str | None:
     return None
 
 
-def _pick_progressive(info: dict) -> dict | None:
-    """
-    Choisit le meilleur format PROGRESSIF (audio + vidéo dans un seul flux
-    http/https, ni HLS ni DASH). Sélection faite ici plutôt que via la
-    syntaxe de filtre yt-dlp : c'est déterministe et indépendant des
-    variations de comportement du sélecteur selon les versions.
-    """
-    best, best_h = None, -1
-    for f in info.get("formats") or []:
-        if not f.get("url"):
-            continue
-        if f.get("vcodec") in (None, "none"):
-            continue
-        if f.get("acodec") in (None, "none"):
-            continue
-        proto = (f.get("protocol") or "").lower()
-        if not proto.startswith("http"):
-            continue
-        if "m3u8" in proto or "dash" in proto:
-            continue
-        h = f.get("height") or 0
-        if h > best_h:
-            best, best_h = f, h
-    return best
-
-
-def progressive_report(url: str, cookiefile: str = None) -> str:
-    """
-    Diagnostic : décrit les formats vus et ceux réellement progressifs.
-    Utilisé pour expliquer un échec de cast.
-    """
-    import json as _json
-    for cf in (None, cookiefile):
-        try:
-            opts = {"quiet": True, "no_warnings": True, "noplaylist": True,
-                    "skip_download": True, "format": "b*/best"}
-            if cf:
-                opts["cookiefile"] = cf
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-            if not info:
-                continue
-            fmts = info.get("formats") or []
-            muxed = []
-            for f in fmts:
-                if (f.get("vcodec") not in (None, "none")
-                        and f.get("acodec") not in (None, "none")):
-                    muxed.append(
-                        f"{f.get('format_id')} {f.get('height')}p "
-                        f"{(f.get('protocol') or '')}"
-                    )
-            return _json.dumps({"n": len(fmts), "muxed": muxed})
-        except Exception as exc:
-            last = f"{type(exc).__name__}: {exc}"
-    return _json.dumps({"n": 0, "muxed": [], "error": "extraction impossible"})
-
-
-def _try_extract(url: str, quality: str, cookiefile: str = None,
-                 progressive_only: bool = False) -> dict | None:
-    with yt_dlp.YoutubeDL(_opts(quality, cookiefile, progressive_only)) as ydl:
+def _try_extract(url: str, quality: str, cookiefile: str = None) -> dict | None:
+    with yt_dlp.YoutubeDL(_opts(quality, cookiefile)) as ydl:
         info = ydl.extract_info(url, download=False)
     if not info:
         return None
-    if progressive_only:
-        # Cast : on impose un flux progressif, choisi manuellement
-        fmt = _pick_progressive(info)
-        if not fmt:
-            return None
-        stream_url = fmt["url"]
-    else:
-        stream_url = _extract_stream(info)
+    stream_url = _extract_stream(info)
     if not stream_url:
         return None
     return {
@@ -157,7 +92,6 @@ def _try_extract(url: str, quality: str, cookiefile: str = None,
         "stream_url": stream_url,
         "thumbnail": info.get("thumbnail"),
         "duration_s": info.get("duration") or 0,
-        "is_live": bool(info.get("is_live")),
     }
 
 
@@ -179,31 +113,21 @@ def resolve_stream_url(url: str, quality: str = "1080", cookiefile: str = None) 
     return info["stream_url"] if info else None
 
 
-def fetch_info(url: str, quality: str = "1080", cookiefile: str = None,
-               progressive_only: bool = False) -> dict | None:
+def fetch_info(url: str, quality: str = "1080", cookiefile: str = None) -> dict | None:
     """
-    Résout titre + flux.
-
-    progressive_only : n'accepte QUE des formats progressifs (MP4 unique,
-    protocole https). Requis pour le cast : le Chromecast lit le HLS via
-    le mécanisme adaptatif du navigateur, qui exige des en-têtes CORS que
-    les serveurs YouTube n'accordent pas à notre receiver. Un MP4 progressif
-    se lit directement, sans cette contrainte.
-    Retourne None si aucun format progressif n'existe (direct en cours).
+    Résout titre + flux d'une vidéo YouTube.
+    Tente d'abord sans cookies, puis avec cookiefile en repli
+    (vidéos à restriction d'âge).
     """
-    # 1. sans cookies (cas majoritaire)
     try:
-        result = _try_extract(url, quality, cookiefile=None,
-                              progressive_only=progressive_only)
+        result = _try_extract(url, quality, cookiefile=None)
         if result:
             return result
     except Exception as exc:
         log.debug(f"fetch_info sans cookies: {exc}")
-    # 2. avec cookiefile (vidéos restreintes)
     if cookiefile:
         try:
-            result = _try_extract(url, quality, cookiefile=cookiefile,
-                                  progressive_only=progressive_only)
+            result = _try_extract(url, quality, cookiefile=cookiefile)
             if result:
                 return result
         except Exception as exc:
@@ -211,28 +135,15 @@ def fetch_info(url: str, quality: str = "1080", cookiefile: str = None,
     return None
 
 
-def _build_format_selector(quality: str, progressive_only: bool = False) -> str:
+def _build_format_selector(quality: str) -> str:
     """
-    Sélecteur de format.
+    Sélecteur ANTI-MERGE : uniquement des flux uniques (audio+vidéo intégrés).
+    Pas de ffmpeg sur Android, donc jamais de syntaxe "v+a" qui déclencherait
+    un merge. ExoPlayer lit nativement le HLS, d'où le palier m3u8.
 
-    Mode normal (lecture locale) : combiné progressif → HLS → filet 'b*'.
-    ExoPlayer lit nativement le HLS, donc tout convient.
-
-    Mode progressive_only (cast) : UNIQUEMENT des flux progressifs https
-    (audio+vidéo dans un seul fichier MP4). Aucun HLS, aucun DASH : le
-    Chromecast ne peut pas les lire faute d'en-têtes CORS côté YouTube.
-    Les formats 22 (720p) et 18 (360p) sont les progressifs historiques,
-    quasi toujours présents sur une vidéo publiée.
+    Paliers : combiné <= Q → HLS <= Q → combiné (variante) → 18 → meilleur unique.
     """
     q = quality if quality in ("2160", "1440", "1080", "720", "480") else "1080"
-
-    if progressive_only:
-        # Sélecteur volontairement permissif : il ne doit jamais faire
-        # échouer l'extraction. Le tri progressif est fait par
-        # _pick_progressive() sur la liste complète des formats.
-        return "b*/best"
-
-
     return (
         f"best[height<={q}][vcodec!=none][acodec!=none]/"
         f"best[height<={q}][protocol^=m3u8]/"

@@ -3,6 +3,7 @@ package io.github.blacksamdev.popcorn.ui
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.webkit.CookieManager
@@ -14,29 +15,27 @@ import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.google.android.gms.cast.framework.CastButtonFactory
-import com.google.android.gms.cast.framework.CastContext
 import io.github.blacksamdev.popcorn.R
 import io.github.blacksamdev.popcorn.bridge.HistoryBridge
 import io.github.blacksamdev.popcorn.bridge.ResumeBridge
 import io.github.blacksamdev.popcorn.bridge.YtdlpBridge
 import io.github.blacksamdev.popcorn.databinding.ActivityMainBinding
-import io.github.blacksamdev.popcorn.player.CastManager
 import kotlinx.coroutines.launch
 
 /**
  * MainActivity — v0.3 : WebView YouTube + historique + réglages + reprise.
  *
- * Cast : l'icône cast ouvre le dialog natif Google pour CHOISIR un appareil.
- * Mais si une session BBS Popcorn est déjà active avec un média en cours,
- * le clic ouvre NOTRE télécommande (CastControlActivity) au lieu du dialog,
- * comme l'app YouTube officielle.
+ * L'app ne caste pas : le lecteur générique du Chromecast ne lit pas les flux
+ * adaptatifs de YouTube (en-têtes CORS absents), ce qui limitait le cast à du
+ * 360p et interdisait les directs. Un bouton renvoie plutôt vers l'application
+ * YouTube officielle, qui gère la TV bien mieux que nous.
  */
 class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val YOUTUBE_HOME = "https://m.youtube.com"
         private const val INTERCEPT_DEBOUNCE_MS = 2000L
+        private const val YOUTUBE_PACKAGE = "com.google.android.youtube"
         const val PREFS_NAME = "bbs_popcorn"
         const val PREF_QUALITY = "quality"
         const val PREF_SPONSORBLOCK = "sponsorblock_enabled"
@@ -45,9 +44,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private lateinit var binding: ActivityMainBinding
-    private var castManager: CastManager? = null
 
     private var lastInterceptedId: String? = null
+    // Dernière vidéo ouverte : cible privilégiée du bouton YouTube
+    private var lastVideoUrl: String? = null
     private var lastInterceptedAt: Long = 0L
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -58,33 +58,11 @@ class MainActivity : AppCompatActivity() {
         HistoryBridge.init(applicationContext)
         ResumeBridge.init(applicationContext)
 
-        CastContext.getSharedInstance(applicationContext)
-
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Bouton Cast natif
-        CastButtonFactory.setUpMediaRouteButton(
-            applicationContext, binding.mediaRouteButton
-        )
-
-        // CastManager pour détecter une session active et son média
-        castManager = CastManager(this).also { it.register() }
-
-        // Interception du clic cast via un overlay transparent au-dessus du bouton.
-        // Si média BBS actif → notre télécommande ; sinon → dialog natif (touch relayé).
-        binding.castOverlay.setOnClickListener {
-            val cm = castManager
-            if (cm?.isConnected == true && cm.hasActiveMedia()) {
-                val ctrl = Intent(this, CastControlActivity::class.java).apply {
-                    putExtra(CastControlActivity.EXTRA_TITLE, cm.currentMediaTitle())
-                }
-                startActivity(ctrl)
-            } else {
-                // Pas de média → on déclenche le dialog natif du MediaRouteButton
-                binding.mediaRouteButton.performClick()
-            }
-        }
+        // Bouton « Ouvrir dans YouTube » (TV, sous-titres, qualité maximale)
+        binding.btnYoutube.setOnClickListener { openInYouTube() }
 
         binding.btnHistory.setOnClickListener {
             startActivity(Intent(this, HistoryActivity::class.java))
@@ -193,6 +171,31 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ─────────────────────────────
+    // Renvoi vers l'application YouTube
+    // ─────────────────────────────
+
+    /**
+     * Ouvre dans l'application YouTube officielle : la dernière vidéo lue si
+     * elle existe, sinon la page en cours dans la WebView. Permet de caster
+     * sur la TV en pleine qualité ou d'accéder aux sous-titres — deux choses
+     * que l'app ne peut pas offrir elle-même.
+     */
+    private fun openInYouTube() {
+        val target = lastVideoUrl ?: binding.webView.url ?: YOUTUBE_HOME
+        val uri = Uri.parse(target)
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, uri).setPackage(YOUTUBE_PACKAGE))
+            return
+        } catch (_: Exception) {
+        }
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, uri))
+        } catch (_: Exception) {
+            Toast.makeText(this, getString(R.string.youtube_missing), Toast.LENGTH_LONG).show()
+        }
+    }
+
+    // ─────────────────────────────
     // WebView
     // ─────────────────────────────
 
@@ -292,7 +295,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        resolveAndPlay("https://www.youtube.com/watch?v=$videoId")
+        lastVideoUrl = "https://www.youtube.com/watch?v=$videoId"
+        resolveAndPlay(lastVideoUrl!!)
     }
 
     // ─────────────────────────────
@@ -320,48 +324,16 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val cleanUrl = YtdlpBridge.prepareUrl(rawUrl)
 
-            // Cast actif : il faut un flux progressif (le Chromecast ne peut
-            // pas lire le HLS de YouTube, en-têtes CORS absents côté serveur).
-            val casting = castManager?.isConnected == true
-            val info = YtdlpBridge.fetchInfo(
-                cleanUrl,
-                quality = currentQuality(),
-                progressiveOnly = casting,
-            )
+            val info = YtdlpBridge.fetchInfo(cleanUrl, quality = currentQuality())
 
             binding.loadingOverlay.visibility = View.GONE
 
             if (info == null) {
-                // En cast, l'absence de progressif signifie presque toujours
-                // un direct en cours : YouTube ne le diffuse qu'en HLS.
-                if (casting) {
-                    // Expliquer précisément pourquoi aucun flux castable
-                    val report = YtdlpBridge.progressiveReport(cleanUrl)
-                    val detail = try {
-                        val o = org.json.JSONObject(report)
-                        val arr = o.optJSONArray("muxed")
-                        val list = if (arr != null && arr.length() > 0)
-                            (0 until arr.length()).joinToString("\n") { arr.optString(it) }
-                        else getString(R.string.cast_no_progressive)
-                        getString(R.string.cast_formats_seen, o.optInt("n")) + "\n" + list
-                    } catch (e: Exception) {
-                        ""
-                    }
-                    AlertDialog.Builder(this@MainActivity)
-                        .setTitle(getString(R.string.cast_live_unsupported_title))
-                        .setMessage(
-                            getString(R.string.cast_live_unsupported_message) +
-                                    "\n\n" + detail
-                        )
-                        .setPositiveButton(android.R.string.ok, null)
-                        .show()
-                } else {
-                    AlertDialog.Builder(this@MainActivity)
-                        .setTitle(getString(R.string.resolve_fail_title))
-                        .setMessage(getString(R.string.resolve_fail_message))
-                        .setPositiveButton(android.R.string.ok, null)
-                        .show()
-                }
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle(getString(R.string.resolve_fail_title))
+                    .setMessage(getString(R.string.resolve_fail_message))
+                    .setPositiveButton(android.R.string.ok, null)
+                    .show()
                 return@launch
             }
 
@@ -371,7 +343,6 @@ class MainActivity : AppCompatActivity() {
                 putExtra(PlayerActivity.EXTRA_STREAM_URL, info.streamUrl)
                 putExtra(PlayerActivity.EXTRA_TITLE, info.title)
                 putExtra(PlayerActivity.EXTRA_SOURCE_URL, cleanUrl)
-                putExtra(PlayerActivity.EXTRA_IS_LIVE, info.isLive)
             }
             startActivity(playerIntent)
         }
@@ -392,8 +363,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        castManager?.unregister()
-        castManager = null
         binding.webView.destroy()
         super.onDestroy()
     }

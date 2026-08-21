@@ -61,29 +61,20 @@
             android:src="@android:drawable/ic_menu_recent_history"
             app:tint="@color/popcorn_cream"
             app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toStartOf="@id/mediaRouteButton"
+            app:layout_constraintEnd_toStartOf="@id/btnYoutube"
             app:layout_constraintTop_toTopOf="parent" />
 
-        <androidx.mediarouter.app.MediaRouteButton
-            android:id="@+id/mediaRouteButton"
+        <ImageButton
+            android:id="@+id/btnYoutube"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:mediaRouteTypes="user"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/open_in_youtube"
+            android:src="@drawable/ic_open_external"
+            app:tint="@color/popcorn_cream"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
-
-        <!-- Overlay transparent pour intercepter le clic cast :
-             si média BBS actif → notre télécommande ; sinon → dialog natif -->
-        <View
-            android:id="@+id/castOverlay"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="@android:color/transparent"
-            app:layout_constraintBottom_toBottomOf="@id/mediaRouteButton"
-            app:layout_constraintEnd_toEndOf="@id/mediaRouteButton"
-            app:layout_constraintStart_toStartOf="@id/mediaRouteButton"
-            app:layout_constraintTop_toTopOf="@id/mediaRouteButton" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 

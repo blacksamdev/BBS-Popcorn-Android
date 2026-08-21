@@ -15,7 +15,7 @@ L'objectif est de proposer une application plus légère que l'application offic
 * Navigation, recherche et compte via l'interface web officielle
 * Lecture vidéo via Media3/ExoPlayer (player natif Android)
 * Résolution des flux via yt-dlp (embarqué dans l'APK via Chaquopy)
-* Casting Chromecast via le Cast SDK Google (télécommande incluse)
+* Renvoi vers l'application YouTube officielle (TV, sous-titres)
 * SponsorBlock (opt-in, désactivé par défaut) : saut automatique des segments signalés par la communauté
 * Reprise de lecture par vidéo (60 jours)
 * Historique des lectures (300 entrées, 90 jours)
@@ -68,7 +68,6 @@ WebView Android (interface YouTube)
         │
         ├── Media3/ExoPlayer (lecture locale)
         │
-        └── Cast SDK (Chromecast)
 ```
 
 La logique métier Python est portée depuis BBS pOpcOrn Linux et embarquée
@@ -84,7 +83,6 @@ dans l'APK via Chaquopy. La frontière Python ↔ Kotlin passe par du JSON brut.
 | Lecteur | Media3 / ExoPlayer |
 | Résolution flux | yt-dlp (embarqué via Chaquopy) |
 | SponsorBlock | API REST publique |
-| Casting | Cast SDK Google |
 | Cookies | CookieManager Android (stockage local) |
 | Pont Python ↔ Kotlin | Chaquopy |
 | Packaging | APK (CI GitHub Actions) |
@@ -100,7 +98,7 @@ dans l'APK via Chaquopy. La frontière Python ↔ Kotlin passe par du JSON brut.
   de l'application : c'est un effet de bord du fonctionnement de yt-dlp, qui résout
   l'URL du flux média directement. Ce comportement dépend de yt-dlp et de YouTube
   et peut changer à tout moment
-* Les composants tiers (yt-dlp, Media3, Cast SDK, Chaquopy) sont soumis à leurs propres licences
+* Les composants tiers (yt-dlp, Media3, Chaquopy) sont soumis à leurs propres licences
 
 ---
 

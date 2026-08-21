@@ -15,7 +15,6 @@ import io.github.blacksamdev.popcorn.bridge.ResumeBridge
 import io.github.blacksamdev.popcorn.bridge.SponsorBridge
 import io.github.blacksamdev.popcorn.databinding.ActivityPlayerBinding
 import io.github.blacksamdev.popcorn.player.BbsPlayer
-import io.github.blacksamdev.popcorn.player.CastManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -28,8 +27,6 @@ import kotlinx.coroutines.launch
  * - Reprise de lecture (resume_store via ResumeBridge)
  * - SponsorBlock : UNIQUEMENT si activé dans les réglages (off par défaut —
  *   aucune requête vers sponsor.ajay.app sans activation explicite)
- * - Si une session Chromecast est active : on caste et on ouvre la
- *   télécommande (CastControlActivity) au lieu de lire en local
  * - Bouton/geste retour : arrêt propre de la lecture et retour à l'UI
  */
 class PlayerActivity : AppCompatActivity() {
@@ -38,7 +35,6 @@ class PlayerActivity : AppCompatActivity() {
         const val EXTRA_STREAM_URL = "extra_stream_url"
         const val EXTRA_TITLE = "extra_title"
         const val EXTRA_SOURCE_URL = "extra_source_url"
-        const val EXTRA_IS_LIVE = "extra_is_live"
 
         // Scope hors-lifecycle pour la sauvegarde de position :
         // survit à la destruction de l'activity, jamais annulé.
@@ -47,7 +43,6 @@ class PlayerActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityPlayerBinding
     private var player: BbsPlayer? = null
-    private var castManager: CastManager? = null
     private var sourceUrl: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -74,22 +69,6 @@ class PlayerActivity : AppCompatActivity() {
 
         if (streamUrl.isNullOrEmpty()) {
             Toast.makeText(this, "Flux invalide", Toast.LENGTH_SHORT).show()
-            finish()
-            return
-        }
-
-        castManager = CastManager(this).also { it.register() }
-
-        // Session Chromecast active → on caste et on ouvre la télécommande
-        if (castManager?.isConnected == true) {
-            val isLive = intent.getBooleanExtra(EXTRA_IS_LIVE, false)
-            castManager?.loadMedia(streamUrl, title, isLive)
-            val ctrl = Intent(this, CastControlActivity::class.java).apply {
-                putExtra(CastControlActivity.EXTRA_STREAM_URL, streamUrl)
-                putExtra(CastControlActivity.EXTRA_TITLE, title)
-                putExtra(CastControlActivity.EXTRA_IS_LIVE, isLive)
-            }
-            startActivity(ctrl)
             finish()
             return
         }
@@ -184,7 +163,5 @@ class PlayerActivity : AppCompatActivity() {
         super.onDestroy()
         player?.release()
         player = null
-        castManager?.unregister()
-        castManager = null
     }
 }

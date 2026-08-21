@@ -28,7 +28,6 @@ object YtdlpBridge {
         val streamUrl: String,
         val thumbnailUrl: String?,
         val durationS: Long,
-        val isLive: Boolean = false,
     )
 
     private val COOKIE_DOMAINS = listOf(
@@ -117,33 +116,15 @@ object YtdlpBridge {
      * Retourne null si résolution impossible.
      */
     /**
-     * Diagnostic : decrit les formats disponibles et lesquels sont
-     * progressifs. Appele uniquement quand un cast echoue, pour expliquer.
+     * Récupère titre + flux + miniature + durée en un seul appel yt-dlp.
+     * Repli cookiefile automatique pour les vidéos restreintes.
      */
-    suspend fun progressiveReport(url: String): String = withContext(Dispatchers.IO) {
-        try {
-            resolver.callAttr("progressive_report", url, buildCookieFile())
-                ?.toString() ?: """{"n":0,"muxed":[]}"""
-        } catch (e: Exception) {
-            """{"n":0,"muxed":[],"error":"bridge"}"""
-        }
-    }
-
-    /**
-     * @param progressiveOnly n'accepte que des formats progressifs (MP4).
-     * Requis pour le cast : le Chromecast ne peut pas lire le HLS de YouTube
-     * (en-têtes CORS absents). Retourne null si aucun progressif n'existe.
-     */
-    suspend fun fetchInfo(
-        url: String,
-        quality: String = "1080",
-        progressiveOnly: Boolean = false,
-    ): VideoInfo? =
+    suspend fun fetchInfo(url: String, quality: String = "1080"): VideoInfo? =
         withContext(Dispatchers.IO) {
             try {
                 val cookieFile = buildCookieFile()  // null si pas connecté
                 val result: PyObject = resolver.callAttr(
-                    "fetch_info", url, quality, cookieFile, progressiveOnly
+                    "fetch_info", url, quality, cookieFile
                 ) ?: return@withContext null
 
                 val map = result.asMap()
@@ -152,9 +133,8 @@ object YtdlpBridge {
                 val title = map[PyObject.fromJava("title")]?.toString() ?: ""
                 val thumbnail = map[PyObject.fromJava("thumbnail")]?.toString()
                 val duration = map[PyObject.fromJava("duration_s")]?.toLong() ?: 0L
-                val isLive = map[PyObject.fromJava("is_live")]?.toBoolean() ?: false
 
-                VideoInfo(title, streamUrl, thumbnail, duration, isLive)
+                VideoInfo(title, streamUrl, thumbnail, duration)
             } catch (e: Exception) {
                 null
             }

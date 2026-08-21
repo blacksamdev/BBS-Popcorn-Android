@@ -334,17 +334,34 @@ class MainActivity : AppCompatActivity() {
             if (info == null) {
                 // En cast, l'absence de progressif signifie presque toujours
                 // un direct en cours : YouTube ne le diffuse qu'en HLS.
-                val (titleRes, msgRes) = if (casting) {
-                    R.string.cast_live_unsupported_title to
-                            R.string.cast_live_unsupported_message
+                if (casting) {
+                    // Expliquer précisément pourquoi aucun flux castable
+                    val report = YtdlpBridge.progressiveReport(cleanUrl)
+                    val detail = try {
+                        val o = org.json.JSONObject(report)
+                        val arr = o.optJSONArray("muxed")
+                        val list = if (arr != null && arr.length() > 0)
+                            (0 until arr.length()).joinToString("\n") { arr.optString(it) }
+                        else getString(R.string.cast_no_progressive)
+                        getString(R.string.cast_formats_seen, o.optInt("n")) + "\n" + list
+                    } catch (e: Exception) {
+                        ""
+                    }
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle(getString(R.string.cast_live_unsupported_title))
+                        .setMessage(
+                            getString(R.string.cast_live_unsupported_message) +
+                                    "\n\n" + detail
+                        )
+                        .setPositiveButton(android.R.string.ok, null)
+                        .show()
                 } else {
-                    R.string.resolve_fail_title to R.string.resolve_fail_message
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle(getString(R.string.resolve_fail_title))
+                        .setMessage(getString(R.string.resolve_fail_message))
+                        .setPositiveButton(android.R.string.ok, null)
+                        .show()
                 }
-                AlertDialog.Builder(this@MainActivity)
-                    .setTitle(getString(titleRes))
-                    .setMessage(getString(msgRes))
-                    .setPositiveButton(android.R.string.ok, null)
-                    .show()
                 return@launch
             }
 

@@ -79,13 +79,77 @@ def _extract_stream(info: dict) -> str | None:
     return None
 
 
+def _pick_progressive(info: dict) -> dict | None:
+    """
+    Choisit le meilleur format PROGRESSIF (audio + vidéo dans un seul flux
+    http/https, ni HLS ni DASH). Sélection faite ici plutôt que via la
+    syntaxe de filtre yt-dlp : c'est déterministe et indépendant des
+    variations de comportement du sélecteur selon les versions.
+    """
+    best, best_h = None, -1
+    for f in info.get("formats") or []:
+        if not f.get("url"):
+            continue
+        if f.get("vcodec") in (None, "none"):
+            continue
+        if f.get("acodec") in (None, "none"):
+            continue
+        proto = (f.get("protocol") or "").lower()
+        if not proto.startswith("http"):
+            continue
+        if "m3u8" in proto or "dash" in proto:
+            continue
+        h = f.get("height") or 0
+        if h > best_h:
+            best, best_h = f, h
+    return best
+
+
+def progressive_report(url: str, cookiefile: str = None) -> str:
+    """
+    Diagnostic : décrit les formats vus et ceux réellement progressifs.
+    Utilisé pour expliquer un échec de cast.
+    """
+    import json as _json
+    for cf in (None, cookiefile):
+        try:
+            opts = {"quiet": True, "no_warnings": True, "noplaylist": True,
+                    "skip_download": True, "format": "b*/best"}
+            if cf:
+                opts["cookiefile"] = cf
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+            if not info:
+                continue
+            fmts = info.get("formats") or []
+            muxed = []
+            for f in fmts:
+                if (f.get("vcodec") not in (None, "none")
+                        and f.get("acodec") not in (None, "none")):
+                    muxed.append(
+                        f"{f.get('format_id')} {f.get('height')}p "
+                        f"{(f.get('protocol') or '')}"
+                    )
+            return _json.dumps({"n": len(fmts), "muxed": muxed})
+        except Exception as exc:
+            last = f"{type(exc).__name__}: {exc}"
+    return _json.dumps({"n": 0, "muxed": [], "error": "extraction impossible"})
+
+
 def _try_extract(url: str, quality: str, cookiefile: str = None,
                  progressive_only: bool = False) -> dict | None:
     with yt_dlp.YoutubeDL(_opts(quality, cookiefile, progressive_only)) as ydl:
         info = ydl.extract_info(url, download=False)
     if not info:
         return None
-    stream_url = _extract_stream(info)
+    if progressive_only:
+        # Cast : on impose un flux progressif, choisi manuellement
+        fmt = _pick_progressive(info)
+        if not fmt:
+            return None
+        stream_url = fmt["url"]
+    else:
+        stream_url = _extract_stream(info)
     if not stream_url:
         return None
     return {
@@ -163,13 +227,11 @@ def _build_format_selector(quality: str, progressive_only: bool = False) -> str:
     q = quality if quality in ("2160", "1440", "1080", "720", "480") else "1080"
 
     if progressive_only:
-        return (
-            f"best[height<={q}][vcodec!=none][acodec!=none][protocol^=https]/"
-            f"b*[height<={q}][vcodec!=none][acodec!=none][protocol^=https]/"
-            f"b*[vcodec!=none][acodec!=none][protocol^=https]/"
-            f"22/"
-            f"18"
-        )
+        # Sélecteur volontairement permissif : il ne doit jamais faire
+        # échouer l'extraction. Le tri progressif est fait par
+        # _pick_progressive() sur la liste complète des formats.
+        return "b*/best"
+
 
     return (
         f"best[height<={q}][vcodec!=none][acodec!=none]/"

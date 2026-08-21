@@ -117,6 +117,19 @@ object YtdlpBridge {
      * Retourne null si résolution impossible.
      */
     /**
+     * Diagnostic : decrit les formats disponibles et lesquels sont
+     * progressifs. Appele uniquement quand un cast echoue, pour expliquer.
+     */
+    suspend fun progressiveReport(url: String): String = withContext(Dispatchers.IO) {
+        try {
+            resolver.callAttr("progressive_report", url, buildCookieFile())
+                ?.toString() ?: """{"n":0,"muxed":[]}"""
+        } catch (e: Exception) {
+            """{"n":0,"muxed":[],"error":"bridge"}"""
+        }
+    }
+
+    /**
      * @param progressiveOnly n'accepte que des formats progressifs (MP4).
      * Requis pour le cast : le Chromecast ne peut pas lire le HLS de YouTube
      * (en-têtes CORS absents). Retourne null si aucun progressif n'existe.

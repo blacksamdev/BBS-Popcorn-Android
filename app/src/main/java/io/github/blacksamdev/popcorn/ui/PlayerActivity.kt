@@ -7,6 +7,7 @@ import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import androidx.media3.common.util.UnstableApi
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -29,10 +30,12 @@ import kotlinx.coroutines.launch
  *   aucune requête vers sponsor.ajay.app sans activation explicite)
  * - Bouton/geste retour : arrêt propre de la lecture et retour à l'UI
  */
+@UnstableApi
 class PlayerActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_STREAM_URL = "extra_stream_url"
+        const val EXTRA_AUDIO_URL = "extra_audio_url"
         const val EXTRA_TITLE = "extra_title"
         const val EXTRA_SOURCE_URL = "extra_source_url"
 
@@ -64,6 +67,7 @@ class PlayerActivity : AppCompatActivity() {
         })
 
         val streamUrl = intent.getStringExtra(EXTRA_STREAM_URL)
+        val audioUrl = intent.getStringExtra(EXTRA_AUDIO_URL) ?: ""
         val title = intent.getStringExtra(EXTRA_TITLE) ?: ""
         sourceUrl = intent.getStringExtra(EXTRA_SOURCE_URL) ?: ""
 
@@ -95,7 +99,7 @@ class PlayerActivity : AppCompatActivity() {
                 emptyList()
             }
 
-            player?.play(streamUrl, segments, startPositionMs = resumeMs)
+            player?.play(streamUrl, audioUrl, segments, startPositionMs = resumeMs)
 
             if (resumeMs > 0) {
                 Toast.makeText(

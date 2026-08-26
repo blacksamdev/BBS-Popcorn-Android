@@ -3,7 +3,11 @@ package io.github.blacksamdev.popcorn.player
 import android.content.Context
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.MergingMediaSource
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import io.github.blacksamdev.popcorn.bridge.SponsorBridge
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -15,11 +19,14 @@ import kotlinx.coroutines.launch
  * BbsPlayer — wrapper Media3/ExoPlayer pour BBS Popcorn Android.
  *
  * Gère :
- * - Lecture d'un stream URL direct (résolu par YtdlpBridge)
+ * - Lecture d'un flux combiné OU de deux pistes séparées (vidéo + audio),
+ *   synchronisées par MergingMediaSource — même principe que mpv côté desktop.
+ *   YouTube ne propose plus de format combiné au-delà de 360p : c'est ainsi
+ *   qu'on obtient le 1080p avec le son.
  * - Reprise de lecture (position de départ)
  * - Skip automatique des segments SponsorBlock
- * - Callbacks de statut vers le ViewModel
  */
+@UnstableApi
 class BbsPlayer(
     private val context: Context,
     private val scope: CoroutineScope,
@@ -33,14 +40,31 @@ class BbsPlayer(
 
     // ─── Lecture ──────────────────────────────────────────────────────
 
+    /**
+     * @param streamUrl piste vidéo (ou flux combiné si audioUrl est vide)
+     * @param audioUrl piste audio séparée, vide si l'audio est déjà inclus
+     */
     fun play(
         streamUrl: String,
+        audioUrl: String = "",
         segments: List<SponsorBridge.SponsorSegment> = emptyList(),
         startPositionMs: Long = 0L,
     ) {
         sponsorSegments = segments
-        val mediaItem = MediaItem.fromUri(streamUrl)
-        exoPlayer.setMediaItem(mediaItem)
+
+        if (audioUrl.isNotEmpty()) {
+            // Pistes séparées : ExoPlayer les synchronise
+            val factory = DefaultDataSource.Factory(context)
+            val video = ProgressiveMediaSource.Factory(factory)
+                .createMediaSource(MediaItem.fromUri(streamUrl))
+            val audio = ProgressiveMediaSource.Factory(factory)
+                .createMediaSource(MediaItem.fromUri(audioUrl))
+            exoPlayer.setMediaSource(MergingMediaSource(video, audio))
+        } else {
+            // Flux unique (combiné ou HLS) : détection automatique
+            exoPlayer.setMediaItem(MediaItem.fromUri(streamUrl))
+        }
+
         exoPlayer.prepare()
         if (startPositionMs > 0) {
             exoPlayer.seekTo(startPositionMs)

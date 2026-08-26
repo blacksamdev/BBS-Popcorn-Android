@@ -26,6 +26,8 @@ object YtdlpBridge {
     data class VideoInfo(
         val title: String,
         val streamUrl: String,
+        /** Piste audio séparée, vide si l'audio est déjà dans streamUrl. */
+        val audioUrl: String,
         val thumbnailUrl: String?,
         val durationS: Long,
     )
@@ -131,10 +133,11 @@ object YtdlpBridge {
                 val streamUrl = map[PyObject.fromJava("stream_url")]?.toString()
                     ?: return@withContext null
                 val title = map[PyObject.fromJava("title")]?.toString() ?: ""
+                val audioUrl = map[PyObject.fromJava("audio_url")]?.toString() ?: ""
                 val thumbnail = map[PyObject.fromJava("thumbnail")]?.toString()
                 val duration = map[PyObject.fromJava("duration_s")]?.toLong() ?: 0L
 
-                VideoInfo(title, streamUrl, thumbnail, duration)
+                VideoInfo(title, streamUrl, audioUrl, thumbnail, duration)
             } catch (e: Exception) {
                 null
             }

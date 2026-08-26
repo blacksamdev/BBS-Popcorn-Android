@@ -63,20 +63,71 @@ def _opts(quality: str, cookiefile: str = None) -> dict:
     return opts
 
 
-def _extract_stream(info: dict) -> str | None:
-    stream_url = info.get("url")
-    if stream_url:
-        return stream_url
-    formats = info.get("formats") or []
-    for fmt in reversed(formats):
-        if (fmt.get("url")
-                and fmt.get("acodec") not in (None, "none")
-                and fmt.get("vcodec") not in (None, "none")):
-            return fmt["url"]
-    for fmt in reversed(formats):
-        if fmt.get("url") and fmt.get("protocol", "").startswith("m3u8"):
-            return fmt["url"]
-    return None
+def _pick_streams(info: dict, quality: str) -> tuple:
+    """
+    Choisit les flux à lire, façon mpv : vidéo et audio SÉPARÉS quand c'est
+    possible (ExoPlayer les synchronise via MergingMediaSource), sinon un
+    flux combiné, sinon du HLS.
+
+    YouTube ne propose plus de format combiné au-delà de 360p : c'est en
+    prenant les pistes séparément qu'on récupère le 1080p avec le son.
+
+    Retourne (video_url, audio_url) — audio_url vaut None si le flux vidéo
+    contient déjà l'audio.
+    """
+    try:
+        q = int(quality)
+    except (TypeError, ValueError):
+        q = 1080
+
+    formats = [f for f in (info.get("formats") or []) if f.get("url")]
+
+    def direct(f):
+        p = (f.get("protocol") or "").lower()
+        return p.startswith("http") and "m3u8" not in p
+
+    def has_video(f):
+        return f.get("vcodec") not in (None, "none")
+
+    def has_audio(f):
+        return f.get("acodec") not in (None, "none")
+
+    # 1. pistes séparées : meilleure vidéo <= q + meilleur audio
+    vids = [f for f in formats
+            if direct(f) and has_video(f) and not has_audio(f)
+            and (f.get("height") or 0) <= q]
+    auds = [f for f in formats
+            if direct(f) and has_audio(f) and not has_video(f)]
+
+    if vids and auds:
+        # hauteur d'abord, puis avc1 (compatibilité maximale), puis débit
+        vids.sort(key=lambda f: (
+            f.get("height") or 0,
+            (f.get("vcodec") or "").startswith("avc"),
+            f.get("tbr") or 0,
+        ))
+        auds.sort(key=lambda f: (
+            (f.get("acodec") or "").startswith("mp4a"),
+            f.get("abr") or 0,
+        ))
+        return vids[-1]["url"], auds[-1]["url"]
+
+    # 2. repli : flux combiné (audio + vidéo intégrés)
+    muxed = [f for f in formats
+             if has_video(f) and has_audio(f) and (f.get("height") or 0) <= q]
+    if muxed:
+        muxed.sort(key=lambda f: (f.get("height") or 0, f.get("tbr") or 0))
+        return muxed[-1]["url"], None
+
+    # 3. repli : HLS (ExoPlayer le lit nativement, audio inclus)
+    for f in formats:
+        if "m3u8" in (f.get("protocol") or "").lower():
+            return f["url"], None
+
+    # 4. dernier recours : ce que yt-dlp a sélectionné
+    if info.get("url"):
+        return info["url"], None
+    return None, None
 
 
 def _try_extract(url: str, quality: str, cookiefile: str = None) -> dict | None:
@@ -84,12 +135,13 @@ def _try_extract(url: str, quality: str, cookiefile: str = None) -> dict | None:
         info = ydl.extract_info(url, download=False)
     if not info:
         return None
-    stream_url = _extract_stream(info)
+    stream_url, audio_url = _pick_streams(info, quality)
     if not stream_url:
         return None
     return {
         "title": (info.get("title") or "").strip(),
         "stream_url": stream_url,
+        "audio_url": audio_url or "",
         "thumbnail": info.get("thumbnail"),
         "duration_s": info.get("duration") or 0,
     }
@@ -137,17 +189,8 @@ def fetch_info(url: str, quality: str = "1080", cookiefile: str = None) -> dict 
 
 def _build_format_selector(quality: str) -> str:
     """
-    Sélecteur ANTI-MERGE : uniquement des flux uniques (audio+vidéo intégrés).
-    Pas de ffmpeg sur Android, donc jamais de syntaxe "v+a" qui déclencherait
-    un merge. ExoPlayer lit nativement le HLS, d'où le palier m3u8.
-
-    Paliers : combiné <= Q → HLS <= Q → combiné (variante) → 18 → meilleur unique.
+    Sélecteur volontairement permissif : il ne doit jamais faire échouer
+    l'extraction. Le vrai choix des pistes est fait par _pick_streams()
+    sur la liste complète des formats.
     """
-    q = quality if quality in ("2160", "1440", "1080", "720", "480") else "1080"
-    return (
-        f"best[height<={q}][vcodec!=none][acodec!=none]/"
-        f"best[height<={q}][protocol^=m3u8]/"
-        f"b*[height<={q}][vcodec!=none][acodec!=none]/"
-        f"18/"
-        f"b*"
-    )
+    return "b*/best"

@@ -21,8 +21,15 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
+      # Les paquets SDK sont déclarés explicitement : la liste par défaut de
+      # l'action contient « tools », retiré du dépôt Android, ce qui fait
+      # échouer sdkmanager. On n'installe que ce dont le projet a besoin
+      # (compileSdk / targetSdk 34).
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          accept-android-sdk-licenses: true
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
 
       - name: Restore debug keystore
         env:

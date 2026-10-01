@@ -30,9 +30,13 @@
             </intent-filter>
         </activity>
 
+        <!-- sensorLandscape : les DEUX sens du paysage, selon l'inclinaison.
+             « landscape » seul fige un seul sens de rotation.
+             configChanges évite de recréer l'activité au retournement,
+             donc la lecture continue sans coupure. -->
         <activity
             android:name=".ui.PlayerActivity"
-            android:screenOrientation="landscape"
+            android:screenOrientation="sensorLandscape"
             android:configChanges="orientation|screenSize|keyboardHidden" />
 
         <activity

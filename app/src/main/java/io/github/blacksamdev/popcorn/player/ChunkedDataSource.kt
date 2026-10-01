@@ -1,6 +1,7 @@
 package io.github.blacksamdev.popcorn.player
 
 import android.net.Uri
+import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
@@ -47,6 +48,11 @@ class ChunkedDataSource(
         private const val MAX_EMPTY_CHUNKS = 2
         /** Reconnexions tolérées quand une tranche est coupée en cours. */
         private const val MAX_RECONNECTS = 2
+        /** Tentatives d'ouverture d'une tranche avant d'abandonner. */
+        private const val MAX_OPEN_RETRIES = 3
+        /** Attente avant de réessayer une ouverture, multipliée par la tentative. */
+        private const val OPEN_RETRY_DELAY_MS = 400L
+        private const val TAG = "BbsChunk"
     }
 
     private val listeners = mutableListOf<TransferListener>()
@@ -82,20 +88,44 @@ class ChunkedDataSource(
             minOf(chunkSize, remainingTotal)
         }
 
-        val source = upstreamFactory.createDataSource()
-        listeners.forEach { source.addTransferListener(it) }
+        var attempt = 0
+        while (true) {
+            val source = upstreamFactory.createDataSource()
+            listeners.forEach { source.addTransferListener(it) }
 
-        val chunkSpec = spec.buildUpon()
-            .setPosition(position)
-            .setLength(length)
-            .build()
+            val chunkSpec = spec.buildUpon()
+                .setPosition(position)
+                .setLength(length)
+                .build()
 
-        val opened = source.open(chunkSpec)
-        current = source
-        remainingInChunk = if (opened == UNSET) length else opened
-
-        if (remainingTotal == UNSET) {
-            remainingTotal = totalRemainingFromHeaders(source)
+            try {
+                val opened = source.open(chunkSpec)
+                current = source
+                remainingInChunk = if (opened == UNSET) length else opened
+                if (remainingTotal == UNSET) {
+                    remainingTotal = totalRemainingFromHeaders(source)
+                }
+                Log.d(TAG, "tranche ouverte : $position (+$length)")
+                return
+            } catch (e: IOException) {
+                try { source.close() } catch (_: Exception) {}
+                attempt++
+                Log.w(
+                    TAG,
+                    "ouverture refusee a $position (tentative $attempt/" +
+                        "$MAX_OPEN_RETRIES) : ${e.javaClass.simpleName} ${e.message}",
+                )
+                // Les serveurs de YouTube refusent ponctuellement une
+                // réouverture. Un court délai suffit généralement : mieux
+                // vaut réessayer que d'arrêter la lecture.
+                if (attempt > MAX_OPEN_RETRIES) throw e
+                try {
+                    Thread.sleep(OPEN_RETRY_DELAY_MS * attempt)
+                } catch (interrupted: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    throw e
+                }
+            }
         }
     }
 

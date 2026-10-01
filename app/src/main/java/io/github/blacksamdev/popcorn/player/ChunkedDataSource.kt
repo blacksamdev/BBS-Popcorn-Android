@@ -6,6 +6,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
+import java.io.IOException
 
 /**
  * ChunkedDataSource — téléchargement par tranches bornées.
@@ -44,6 +45,8 @@ class ChunkedDataSource(
         private val UNSET: Long = C.LENGTH_UNSET.toLong()
         /** Garde-fou contre une boucle si le serveur renvoie des tranches vides. */
         private const val MAX_EMPTY_CHUNKS = 2
+        /** Reconnexions tolérées quand une tranche est coupée en cours. */
+        private const val MAX_RECONNECTS = 2
     }
 
     private val listeners = mutableListOf<TransferListener>()
@@ -114,6 +117,7 @@ class ChunkedDataSource(
         if (remainingTotal == 0L) return C.RESULT_END_OF_INPUT
 
         var emptyChunks = 0
+        var reconnects = 0
         while (emptyChunks <= MAX_EMPTY_CHUNKS) {
             val source = current ?: return C.RESULT_END_OF_INPUT
 
@@ -123,7 +127,20 @@ class ChunkedDataSource(
                 length
             }
 
-            val read = source.read(buffer, offset, maxRead)
+            val read = try {
+                source.read(buffer, offset, maxRead)
+            } catch (e: IOException) {
+                // Connexion coupée en cours de tranche : les serveurs de
+                // YouTube le font régulièrement. On rouvre à la position
+                // courante au lieu de faire remonter l'erreur au lecteur,
+                // dont le nombre de tentatives est limité.
+                if (reconnects >= MAX_RECONNECTS) throw e
+                reconnects++
+                closeCurrent()
+                openChunk()
+                continue
+            }
+
             if (read != C.RESULT_END_OF_INPUT) {
                 position += read
                 if (remainingInChunk > 0) remainingInChunk -= read

@@ -99,21 +99,24 @@ class BbsPlayer(
     ) {
         sponsorSegments = segments
 
+        // La position de reprise est fournie AVANT prepare() : le
+        // chargement démarre directement au bon endroit du fichier.
+        // Préparer puis sauter ferait charger le début pour rien, puis
+        // tout jeter — d'où une coupure visible de plusieurs secondes.
+        val startAt = if (startPositionMs > 0) startPositionMs else C.TIME_UNSET
+
         if (audioUrl.isNotEmpty()) {
             val factory = dataSourceFactory()
             val video = ProgressiveMediaSource.Factory(factory)
                 .createMediaSource(MediaItem.fromUri(streamUrl))
             val audio = ProgressiveMediaSource.Factory(factory)
                 .createMediaSource(MediaItem.fromUri(audioUrl))
-            exoPlayer.setMediaSource(MergingMediaSource(video, audio))
+            exoPlayer.setMediaSource(MergingMediaSource(video, audio), startAt)
         } else {
-            exoPlayer.setMediaItem(MediaItem.fromUri(streamUrl))
+            exoPlayer.setMediaItem(MediaItem.fromUri(streamUrl), startAt)
         }
 
         exoPlayer.prepare()
-        if (startPositionMs > 0) {
-            exoPlayer.seekTo(startPositionMs)
-        }
         exoPlayer.play()
         startSponsorWatcher()
         onStatusChange?.invoke("Lecture en cours.")

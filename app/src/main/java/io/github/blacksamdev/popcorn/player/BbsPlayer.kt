@@ -5,6 +5,7 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
@@ -87,7 +88,7 @@ class BbsPlayer(
      */
     private fun dataSourceFactory(
         headers: Map<String, String> = emptyMap(),
-    ): DefaultDataSource.Factory {
+    ): DataSource.Factory {
         val http = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(HTTP_TIMEOUT_MS)
@@ -102,7 +103,9 @@ class BbsPlayer(
         if (headers.isNotEmpty()) {
             http.setDefaultRequestProperties(headers)
         }
-        return DefaultDataSource.Factory(context, http)
+        // Téléchargement par tranches : une requête continue serait bridée
+        // par les serveurs de YouTube au bout de quelques secondes.
+        return ChunkedDataSource.Factory(DefaultDataSource.Factory(context, http))
     }
 
     // ─── Lecture ──────────────────────────────────────────────────────

@@ -342,6 +342,7 @@ class MainActivity : AppCompatActivity() {
             val playerIntent = Intent(this@MainActivity, PlayerActivity::class.java).apply {
                 putExtra(PlayerActivity.EXTRA_STREAM_URL, info.streamUrl)
                 putExtra(PlayerActivity.EXTRA_AUDIO_URL, info.audioUrl)
+                putExtra(PlayerActivity.EXTRA_HEADERS, info.httpHeadersJson)
                 putExtra(PlayerActivity.EXTRA_TITLE, info.title)
                 putExtra(PlayerActivity.EXTRA_SOURCE_URL, cleanUrl)
             }

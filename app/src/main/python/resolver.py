@@ -19,6 +19,7 @@ On force uniquement des flux UNIQUES contenant déjà audio+vidéo :
   5. 'best*' = meilleur flux UNIQUE (l'étoile évite le merge auto)
 """
 
+import json
 import logging
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
@@ -61,6 +62,26 @@ def _opts(quality: str, cookiefile: str = None) -> dict:
     if cookiefile:
         opts["cookiefile"] = cookiefile
     return opts
+
+
+# En-tetes HTTP a rejouer a l'identique sur les URLs de flux.
+# googlevideo verifie que la requete de lecture correspond au client
+# YouTube qui a produit l'URL ; sans cela il repond 403 au bout de
+# quelques secondes. yt-dlp fournit ces en-tetes format par format.
+_DROP_HEADERS = {
+    "range", "accept-encoding", "host", "connection",
+    "content-length", "transfer-encoding",
+}
+
+
+def _headers_of(fmt: dict, info: dict) -> dict:
+    """En-tetes du format choisi, sinon ceux de la video, nettoyes."""
+    raw = (fmt or {}).get("http_headers") or (info or {}).get("http_headers") or {}
+    return {
+        k: v for k, v in raw.items()
+        if isinstance(k, str) and isinstance(v, str)
+        and k.lower() not in _DROP_HEADERS
+    }
 
 
 def _pick_streams(info: dict, quality: str) -> tuple:
@@ -128,24 +149,24 @@ def _pick_streams(info: dict, quality: str) -> tuple:
             (f.get("acodec") or "").startswith("mp4a"),
             f.get("abr") or 0,
         ))
-        return vids[-1]["url"], auds[-1]["url"]
+        return vids[-1]["url"], auds[-1]["url"], _headers_of(vids[-1], info)
 
     # 2. repli : flux combiné (audio + vidéo intégrés)
     muxed = [f for f in formats
              if has_video(f) and has_audio(f) and (f.get("height") or 0) <= q]
     if muxed:
         muxed.sort(key=lambda f: (f.get("height") or 0, f.get("tbr") or 0))
-        return muxed[-1]["url"], None
+        return muxed[-1]["url"], None, _headers_of(muxed[-1], info)
 
     # 3. repli : HLS (ExoPlayer le lit nativement, audio inclus)
     for f in formats:
         if "m3u8" in (f.get("protocol") or "").lower():
-            return f["url"], None
+            return f["url"], None, _headers_of(f, info)
 
     # 4. dernier recours : ce que yt-dlp a sélectionné
     if info.get("url"):
-        return info["url"], None
-    return None, None
+        return info["url"], None, _headers_of(info, info)
+    return None, None, {}
 
 
 def _try_extract(url: str, quality: str, cookiefile: str = None) -> dict | None:
@@ -153,13 +174,14 @@ def _try_extract(url: str, quality: str, cookiefile: str = None) -> dict | None:
         info = ydl.extract_info(url, download=False)
     if not info:
         return None
-    stream_url, audio_url = _pick_streams(info, quality)
+    stream_url, audio_url, headers = _pick_streams(info, quality)
     if not stream_url:
         return None
     return {
         "title": (info.get("title") or "").strip(),
         "stream_url": stream_url,
         "audio_url": audio_url or "",
+        "http_headers": json.dumps(headers or {}),
         "thumbnail": info.get("thumbnail"),
         "duration_s": info.get("duration") or 0,
     }

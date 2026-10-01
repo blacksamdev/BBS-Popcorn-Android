@@ -28,6 +28,12 @@ object YtdlpBridge {
         val streamUrl: String,
         /** Piste audio séparée, vide si l'audio est déjà dans streamUrl. */
         val audioUrl: String,
+        /**
+         * En-têtes HTTP (JSON) à rejouer sur les URLs de flux.
+         * googlevideo refuse la lecture (403) si la requête ne correspond
+         * pas au client YouTube qui a produit l'URL.
+         */
+        val httpHeadersJson: String,
         val thumbnailUrl: String?,
         val durationS: Long,
     )
@@ -134,10 +140,11 @@ object YtdlpBridge {
                     ?: return@withContext null
                 val title = map[PyObject.fromJava("title")]?.toString() ?: ""
                 val audioUrl = map[PyObject.fromJava("audio_url")]?.toString() ?: ""
+                val headersJson = map[PyObject.fromJava("http_headers")]?.toString() ?: "{}"
                 val thumbnail = map[PyObject.fromJava("thumbnail")]?.toString()
                 val duration = map[PyObject.fromJava("duration_s")]?.toLong() ?: 0L
 
-                VideoInfo(title, streamUrl, audioUrl, thumbnail, duration)
+                VideoInfo(title, streamUrl, audioUrl, headersJson, thumbnail, duration)
             } catch (e: Exception) {
                 null
             }

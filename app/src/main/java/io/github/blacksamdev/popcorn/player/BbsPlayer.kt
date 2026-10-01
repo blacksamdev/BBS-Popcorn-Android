@@ -85,11 +85,23 @@ class BbsPlayer(
      * Les serveurs de YouTube redirigent fréquemment ; sans cela, une
      * lecture peut se bloquer sur une réponse intermédiaire.
      */
-    private fun dataSourceFactory(): DefaultDataSource.Factory {
+    private fun dataSourceFactory(
+        headers: Map<String, String> = emptyMap(),
+    ): DefaultDataSource.Factory {
         val http = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(HTTP_TIMEOUT_MS)
             .setReadTimeoutMs(HTTP_TIMEOUT_MS)
+
+        // Les serveurs de YouTube verifient que la requete de lecture
+        // correspond au client qui a produit l'URL : sans les memes
+        // en-tetes, ils repondent 403 apres quelques secondes.
+        headers.entries
+            .firstOrNull { it.key.equals("User-Agent", ignoreCase = true) }
+            ?.let { http.setUserAgent(it.value) }
+        if (headers.isNotEmpty()) {
+            http.setDefaultRequestProperties(headers)
+        }
         return DefaultDataSource.Factory(context, http)
     }
 
@@ -104,6 +116,7 @@ class BbsPlayer(
         audioUrl: String = "",
         segments: List<SponsorBridge.SponsorSegment> = emptyList(),
         startPositionMs: Long = 0L,
+        headers: Map<String, String> = emptyMap(),
     ) {
         sponsorSegments = segments
 
@@ -114,14 +127,21 @@ class BbsPlayer(
         val startAt = if (startPositionMs > 0) startPositionMs else C.TIME_UNSET
 
         if (audioUrl.isNotEmpty()) {
-            val factory = dataSourceFactory()
+            val factory = dataSourceFactory(headers)
             val video = ProgressiveMediaSource.Factory(factory)
                 .createMediaSource(MediaItem.fromUri(streamUrl))
             val audio = ProgressiveMediaSource.Factory(factory)
                 .createMediaSource(MediaItem.fromUri(audioUrl))
             exoPlayer.setMediaSource(MergingMediaSource(video, audio), startAt)
         } else {
-            exoPlayer.setMediaItem(MediaItem.fromUri(streamUrl), startAt)
+            // Flux unique : passer par une source explicite pour pouvoir
+            // appliquer les memes en-tetes.
+            val factory = dataSourceFactory(headers)
+            exoPlayer.setMediaSource(
+                ProgressiveMediaSource.Factory(factory)
+                    .createMediaSource(MediaItem.fromUri(streamUrl)),
+                startAt,
+            )
         }
 
         exoPlayer.prepare()

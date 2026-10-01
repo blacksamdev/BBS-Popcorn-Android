@@ -36,6 +36,7 @@ class PlayerActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_STREAM_URL = "extra_stream_url"
         const val EXTRA_AUDIO_URL = "extra_audio_url"
+        const val EXTRA_HEADERS = "extra_headers"
         const val EXTRA_TITLE = "extra_title"
         const val EXTRA_SOURCE_URL = "extra_source_url"
 
@@ -68,6 +69,7 @@ class PlayerActivity : AppCompatActivity() {
 
         val streamUrl = intent.getStringExtra(EXTRA_STREAM_URL)
         val audioUrl = intent.getStringExtra(EXTRA_AUDIO_URL) ?: ""
+        val headers = parseHeaders(intent.getStringExtra(EXTRA_HEADERS))
         val title = intent.getStringExtra(EXTRA_TITLE) ?: ""
         sourceUrl = intent.getStringExtra(EXTRA_SOURCE_URL) ?: ""
 
@@ -99,7 +101,13 @@ class PlayerActivity : AppCompatActivity() {
                 emptyList()
             }
 
-            player?.play(streamUrl, audioUrl, segments, startPositionMs = resumeMs)
+            player?.play(
+                streamUrl,
+                audioUrl,
+                segments,
+                startPositionMs = resumeMs,
+                headers = headers,
+            )
 
             if (resumeMs > 0) {
                 Toast.makeText(
@@ -115,6 +123,23 @@ class PlayerActivity : AppCompatActivity() {
                     Toast.LENGTH_SHORT
                 ).show()
             }
+        }
+    }
+
+    /**
+     * En-têtes fournis par yt-dlp, transmis en JSON.
+     * Ils doivent être rejoués tels quels sur les URLs de flux, sans quoi
+     * les serveurs de YouTube refusent la lecture (403).
+     */
+    private fun parseHeaders(json: String?): Map<String, String> {
+        if (json.isNullOrBlank()) return emptyMap()
+        return try {
+            val obj = org.json.JSONObject(json)
+            buildMap {
+                obj.keys().forEach { key -> put(key, obj.optString(key)) }
+            }
+        } catch (e: Exception) {
+            emptyMap()
         }
     }
 

@@ -12,7 +12,6 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
-import androidx.media3.exoplayer.util.EventLogger
 import io.github.blacksamdev.popcorn.bridge.SponsorBridge
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -69,13 +68,6 @@ class BbsPlayer(
     val exoPlayer: ExoPlayer = ExoPlayer.Builder(context)
         .setLoadControl(loadControl)
         .build()
-
-    init {
-        // Journalisation détaillée du lecteur (tag logcat « EventLogger ») :
-        // états, chargements, formats retenus, estimation de bande passante.
-        // Sert au diagnostic des coupures ; à retirer une fois stabilisé.
-        exoPlayer.addAnalyticsListener(EventLogger())
-    }
 
     private var sponsorSegments: List<SponsorBridge.SponsorSegment> = emptyList()
     private var sponsorJob: Job? = null

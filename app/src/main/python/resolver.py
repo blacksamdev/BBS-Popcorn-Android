@@ -99,12 +99,30 @@ def _pick_streams(info: dict, quality: str) -> tuple:
     auds = [f for f in formats
             if direct(f) and has_audio(f) and not has_video(f)]
 
+    def codec_rank(f) -> int:
+        """
+        Préférence de codec à résolution égale.
+
+        VP9 transporte environ 40 % de données en moins que H.264 pour la
+        même image (1080p60 : ~2500 kb/s contre ~4200), ce qui évite les
+        coupures sur une connexion moyenne. Il est décodé en matériel sur
+        la quasi-totalité des appareils Android 8+, et Android fournit de
+        toute façon un décodeur logiciel de secours.
+        AV1 arrive en dernier : décodage matériel encore rare.
+        """
+        v = (f.get("vcodec") or "").lower()
+        if v.startswith("vp9") or v.startswith("vp09"):
+            return 2
+        if v.startswith("avc"):
+            return 1
+        return 0
+
     if vids and auds:
-        # hauteur d'abord, puis avc1 (compatibilité maximale), puis débit
+        # hauteur d'abord, puis codec le plus économe, puis débit le plus bas
         vids.sort(key=lambda f: (
             f.get("height") or 0,
-            (f.get("vcodec") or "").startswith("avc"),
-            f.get("tbr") or 0,
+            codec_rank(f),
+            -(f.get("tbr") or 0),
         ))
         auds.sort(key=lambda f: (
             (f.get("acodec") or "").startswith("mp4a"),

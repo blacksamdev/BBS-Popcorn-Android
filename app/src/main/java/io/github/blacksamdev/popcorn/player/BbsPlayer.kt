@@ -40,9 +40,13 @@ class BbsPlayer(
         // Tampon visé avant de considérer le chargement suffisant
         private const val MIN_BUFFER_MS = 50_000
         private const val MAX_BUFFER_MS = 120_000
-        // Tampon requis pour (re)démarrer la lecture
-        private const val BUFFER_FOR_PLAYBACK_MS = 3_000
-        private const val BUFFER_AFTER_REBUFFER_MS = 10_000
+        // Tampon requis pour (re)démarrer la lecture.
+        // Démarrage : un coussin assez large pour absorber un début de
+        // chargement lent, sans trop retarder l'image.
+        // Reprise après coupure : volontairement plus court que le
+        // démarrage, pour que l'interruption soit brève.
+        private const val BUFFER_FOR_PLAYBACK_MS = 5_000
+        private const val BUFFER_AFTER_REBUFFER_MS = 5_000
         private const val HTTP_TIMEOUT_MS = 15_000
     }
 

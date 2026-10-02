@@ -1,8 +1,10 @@
 package io.github.blacksamdev.popcorn.player
 
 import android.content.Context
+import android.net.Uri
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
@@ -105,6 +107,8 @@ class BbsPlayer(
     /**
      * @param streamUrl piste vidéo (ou flux combiné si audioUrl est vide)
      * @param audioUrl piste audio séparée, vide si l'audio est déjà inclus
+     * @param title titre affiché dans la notification média
+     * @param artworkUrl vignette affichée dans la notification média
      */
     fun play(
         streamUrl: String,
@@ -112,6 +116,8 @@ class BbsPlayer(
         segments: List<SponsorBridge.SponsorSegment> = emptyList(),
         startPositionMs: Long = 0L,
         headers: Map<String, String> = emptyMap(),
+        title: String = "",
+        artworkUrl: String? = null,
     ) {
         sponsorSegments = segments
 
@@ -120,21 +126,23 @@ class BbsPlayer(
         // Préparer puis sauter ferait charger le début pour rien, puis
         // tout jeter — d'où une coupure visible de plusieurs secondes.
         val startAt = if (startPositionMs > 0) startPositionMs else C.TIME_UNSET
+        val factory = dataSourceFactory(headers)
 
         if (audioUrl.isNotEmpty()) {
-            val factory = dataSourceFactory(headers)
+            // Le titre va sur la piste vidéo : MergingMediaSource expose le
+            // MediaItem de sa première source, c'est lui que la session média
+            // lit pour remplir la notification.
             val video = ProgressiveMediaSource.Factory(factory)
-                .createMediaSource(MediaItem.fromUri(streamUrl))
+                .createMediaSource(describedItem(streamUrl, title, artworkUrl))
             val audio = ProgressiveMediaSource.Factory(factory)
                 .createMediaSource(MediaItem.fromUri(audioUrl))
             exoPlayer.setMediaSource(MergingMediaSource(video, audio), startAt)
         } else {
             // Flux unique : passer par une source explicite pour pouvoir
             // appliquer les memes en-tetes.
-            val factory = dataSourceFactory(headers)
             exoPlayer.setMediaSource(
                 ProgressiveMediaSource.Factory(factory)
-                    .createMediaSource(MediaItem.fromUri(streamUrl)),
+                    .createMediaSource(describedItem(streamUrl, title, artworkUrl)),
                 startAt,
             )
         }
@@ -143,6 +151,27 @@ class BbsPlayer(
         exoPlayer.play()
         startSponsorWatcher()
         onStatusChange?.invoke("Lecture en cours.")
+    }
+
+    /**
+     * MediaItem porteur du titre et de la vignette : sans ces métadonnées, la
+     * notification média n'afficherait qu'une URL de googlevideo.
+     */
+    private fun describedItem(
+        uri: String,
+        title: String,
+        artworkUrl: String?,
+    ): MediaItem {
+        val metadata = MediaMetadata.Builder()
+            .setTitle(if (title.isNotEmpty()) title else null)
+            .apply {
+                if (!artworkUrl.isNullOrEmpty()) setArtworkUri(Uri.parse(artworkUrl))
+            }
+            .build()
+        return MediaItem.Builder()
+            .setUri(uri)
+            .setMediaMetadata(metadata)
+            .build()
     }
 
     fun pause() {

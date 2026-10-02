@@ -1,34 +1,42 @@
 package io.github.blacksamdev.popcorn.ui
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
-import androidx.media3.common.util.UnstableApi
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.media3.common.util.UnstableApi
 import io.github.blacksamdev.popcorn.bridge.ResumeBridge
 import io.github.blacksamdev.popcorn.bridge.SponsorBridge
 import io.github.blacksamdev.popcorn.databinding.ActivityPlayerBinding
-import io.github.blacksamdev.popcorn.player.BbsPlayer
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
+import io.github.blacksamdev.popcorn.player.PlaybackHolder
+import io.github.blacksamdev.popcorn.player.PlaybackService
 import kotlinx.coroutines.launch
 
 /**
  * PlayerActivity — écran de lecture BBS Popcorn Android.
  *
- * - Lecture locale via Media3/ExoPlayer (BbsPlayer)
+ * Cet écran ne possède pas le lecteur : celui-ci vit dans PlaybackHolder,
+ * publié par PlaybackService, afin que le son continue quand l'écran s'éteint
+ * ou qu'on quitte l'app. L'activité ne fait que brancher sa surface vidéo
+ * dessus quand elle est visible, et la détacher quand elle ne l'est plus.
+ *
  * - Reprise de lecture (resume_store via ResumeBridge)
  * - SponsorBlock : UNIQUEMENT si activé dans les réglages (off par défaut —
  *   aucune requête vers sponsor.ajay.app sans activation explicite)
- * - Bouton/geste retour : arrêt propre de la lecture et retour à l'UI
+ * - Bouton/geste retour : sortie explicite, donc arrêt de la lecture
+ *   (à la différence du passage en arrière-plan, où le son continue)
  */
 @UnstableApi
 class PlayerActivity : AppCompatActivity() {
@@ -38,16 +46,13 @@ class PlayerActivity : AppCompatActivity() {
         const val EXTRA_AUDIO_URL = "extra_audio_url"
         const val EXTRA_HEADERS = "extra_headers"
         const val EXTRA_TITLE = "extra_title"
+        const val EXTRA_THUMBNAIL = "extra_thumbnail"
         const val EXTRA_SOURCE_URL = "extra_source_url"
 
-        // Scope hors-lifecycle pour la sauvegarde de position :
-        // survit à la destruction de l'activity, jamais annulé.
-        private val saveScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        private const val REQ_NOTIFICATIONS = 1
     }
 
     private lateinit var binding: ActivityPlayerBinding
-    private var player: BbsPlayer? = null
-    private var sourceUrl: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -58,31 +63,40 @@ class PlayerActivity : AppCompatActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         hideSystemBars()
 
-        // Retour (bouton ou geste) : sauvegarde + arrêt propre
+        // Retour (bouton ou geste) : sortie volontaire, on arrête la lecture.
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                savePosition()
-                player?.stop()
+                PlaybackHolder.saveResume()
+                PlaybackHolder.current?.stop()
                 finish()
             }
         })
 
         val streamUrl = intent.getStringExtra(EXTRA_STREAM_URL)
-        val audioUrl = intent.getStringExtra(EXTRA_AUDIO_URL) ?: ""
-        val headers = parseHeaders(intent.getStringExtra(EXTRA_HEADERS))
-        val title = intent.getStringExtra(EXTRA_TITLE) ?: ""
-        sourceUrl = intent.getStringExtra(EXTRA_SOURCE_URL) ?: ""
-
         if (streamUrl.isNullOrEmpty()) {
-            Toast.makeText(this, "Flux invalide", Toast.LENGTH_SHORT).show()
-            finish()
+            // Ouverture depuis la notification média : l'intent ne porte pas
+            // de flux, on se rebranche sur la lecture en cours (onStart).
+            if (PlaybackHolder.current == null) {
+                Toast.makeText(this, "Flux invalide", Toast.LENGTH_SHORT).show()
+                finish()
+            }
             return
         }
 
-        // Lecture locale
-        player = BbsPlayer(this, lifecycleScope).also {
-            binding.playerView.player = it.exoPlayer
-        }
+        ensureNotificationPermission()
+
+        val audioUrl = intent.getStringExtra(EXTRA_AUDIO_URL) ?: ""
+        val headers = parseHeaders(intent.getStringExtra(EXTRA_HEADERS))
+        val title = intent.getStringExtra(EXTRA_TITLE) ?: ""
+        val thumbnail = intent.getStringExtra(EXTRA_THUMBNAIL)
+        val sourceUrl = intent.getStringExtra(EXTRA_SOURCE_URL) ?: ""
+
+        // Le service doit tourner avant la lecture : c'est lui qui publie la
+        // session média, donc la notification et les contrôles Bluetooth.
+        startService(Intent(this, PlaybackService::class.java))
+
+        val player = PlaybackHolder.obtain(this)
+        PlaybackHolder.remember(sourceUrl)
 
         val sponsorBlockEnabled = getSharedPreferences(
             MainActivity.PREFS_NAME, Context.MODE_PRIVATE
@@ -101,12 +115,14 @@ class PlayerActivity : AppCompatActivity() {
                 emptyList()
             }
 
-            player?.play(
+            player.play(
                 streamUrl,
                 audioUrl,
                 segments,
                 startPositionMs = resumeMs,
                 headers = headers,
+                title = title,
+                artworkUrl = thumbnail,
             )
 
             if (resumeMs > 0) {
@@ -124,6 +140,22 @@ class PlayerActivity : AppCompatActivity() {
                 ).show()
             }
         }
+    }
+
+    /**
+     * Android 13+ : sans cette autorisation, la notification média n'apparaît
+     * pas. La lecture fonctionne quand même, simplement sans contrôles sur
+     * l'écran verrouillé — on demande donc, sans bloquer si c'est refusé.
+     */
+    private fun ensureNotificationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val granted = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+        if (granted) return
+        ActivityCompat.requestPermissions(
+            this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIFICATIONS
+        )
     }
 
     /**
@@ -151,23 +183,6 @@ class PlayerActivity : AppCompatActivity() {
         return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
     }
 
-    /**
-     * Sauvegarde la position courante (la logique <10s / >95% est côté Python).
-     */
-    private fun savePosition() {
-        val p = player ?: return
-        if (sourceUrl.isEmpty()) return
-        val pos = p.currentPositionMs
-        val dur = p.durationMs
-        if (pos <= 0) return
-        // Écriture asynchrone : scope indépendant du lifecycle pour survivre
-        // à la destruction de l'activity (petit fichier JSON local, très rapide)
-        val url = sourceUrl
-        saveScope.launch {
-            ResumeBridge.setMs(url, pos, if (dur > 0) dur else 0L)
-        }
-    }
-
     private fun hideSystemBars() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, binding.root).apply {
@@ -177,20 +192,30 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
-    override fun onPause() {
-        super.onPause()
-        savePosition()
-        player?.pause()
+    // ─── Surface vidéo ────────────────────────────────────────────────
+    //
+    // Branchée seulement quand l'écran est visible. En la détachant, le
+    // rendu vidéo s'arrête mais le lecteur continue : c'est exactement le
+    // comportement « son en arrière-plan » attendu.
+
+    override fun onStart() {
+        super.onStart()
+        binding.playerView.player = PlaybackHolder.current?.exoPlayer
     }
 
-    override fun onResume() {
-        super.onResume()
-        player?.resume()
+    override fun onStop() {
+        super.onStop()
+        PlaybackHolder.saveResume()
+        binding.playerView.player = null
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        player?.release()
-        player = null
+        binding.playerView.player = null
+        if (isFinishing) {
+            // Le service ferme la session puis libère le lecteur, dans cet
+            // ordre. L'activité ne libère rien elle-même.
+            stopService(Intent(this, PlaybackService::class.java))
+        }
     }
 }

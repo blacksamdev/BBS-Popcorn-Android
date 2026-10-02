@@ -82,7 +82,7 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        if (!handleShareIntent(intent)) {
+        if (!handleIncomingIntent(intent)) {
             binding.webView.loadUrl(YOUTUBE_HOME)
         }
     }
@@ -90,7 +90,7 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)  // requis avec launchMode=singleTask
-        handleShareIntent(intent)
+        handleIncomingIntent(intent)
     }
 
     // ─────────────────────────────
@@ -300,18 +300,34 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ─────────────────────────────
-    // Partage depuis l'app YouTube
+    // Liens entrants : partage et ouverture directe
     // ─────────────────────────────
 
-    private fun handleShareIntent(intent: Intent?): Boolean {
-        if (intent?.action == Intent.ACTION_SEND && intent.type == "text/plain") {
-            val sharedUrl = intent.getStringExtra(Intent.EXTRA_TEXT)?.trim()
-            if (!sharedUrl.isNullOrEmpty() && isWatchUrl(sharedUrl)) {
-                resolveAndPlay(sharedUrl)
-                return true
-            }
+    /**
+     * Traite un lien venu de l'extérieur. Deux chemins :
+     *
+     * - ACTION_SEND : « Partager » depuis l'app YouTube ou un messager.
+     * - ACTION_VIEW : on a tapé un lien YouTube et choisi Popcorn dans
+     *   « Ouvrir avec ». C'est ce qui permet d'en faire son lecteur par défaut.
+     *
+     * Renvoie true si un lien a été pris en charge, auquel cas la WebView n'a
+     * pas à charger la page d'accueil.
+     */
+    private fun handleIncomingIntent(intent: Intent?): Boolean {
+        val url = when (intent?.action) {
+            Intent.ACTION_SEND ->
+                if (intent.type == "text/plain") {
+                    intent.getStringExtra(Intent.EXTRA_TEXT)?.trim()
+                } else {
+                    null
+                }
+            Intent.ACTION_VIEW -> intent.data?.toString()?.trim()
+            else -> null
         }
-        return false
+        if (url.isNullOrEmpty() || !isWatchUrl(url)) return false
+        lastVideoUrl = url
+        resolveAndPlay(url)
+        return true
     }
 
     // ─────────────────────────────
@@ -344,6 +360,7 @@ class MainActivity : AppCompatActivity() {
                 putExtra(PlayerActivity.EXTRA_AUDIO_URL, info.audioUrl)
                 putExtra(PlayerActivity.EXTRA_HEADERS, info.httpHeadersJson)
                 putExtra(PlayerActivity.EXTRA_TITLE, info.title)
+                putExtra(PlayerActivity.EXTRA_THUMBNAIL, info.thumbnailUrl)
                 putExtra(PlayerActivity.EXTRA_SOURCE_URL, cleanUrl)
             }
             startActivity(playerIntent)

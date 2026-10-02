@@ -87,6 +87,7 @@ class HistoryActivity : AppCompatActivity() {
                 putExtra(PlayerActivity.EXTRA_AUDIO_URL, info.audioUrl)
                 putExtra(PlayerActivity.EXTRA_HEADERS, info.httpHeadersJson)
                 putExtra(PlayerActivity.EXTRA_TITLE, info.title)
+                putExtra(PlayerActivity.EXTRA_THUMBNAIL, info.thumbnailUrl)
                 putExtra(PlayerActivity.EXTRA_SOURCE_URL, entry.url)
             }
             startActivity(playerIntent)

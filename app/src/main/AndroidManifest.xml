@@ -4,6 +4,16 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- Lecture en arrière-plan : un service au premier plan est obligatoire
+         pour qu'Android laisse le son continuer écran éteint. La notification
+         média qui l'accompagne est ce qui donne les contrôles sur l'écran
+         verrouillé et dans les écouteurs Bluetooth. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- Android 13+ : sans cette autorisation la notification média n'apparaît
+         pas (la lecture fonctionne quand même, mais sans contrôles). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:allowBackup="false"
         android:usesCleartextTraffic="false"
@@ -28,6 +38,25 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
+            <!-- Ouverture directe d'un lien YouTube : Popcorn apparaît dans le
+                 sélecteur « Ouvrir avec » quand on tape un lien n'importe où.
+                 Seules les URLs de vidéo sont déclarées : les Shorts (format
+                 vertical) ne sont pas gérés par le lecteur, donc on ne les
+                 revendique pas. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="www.youtube.com" android:pathPrefix="/watch" />
+                <data android:scheme="http" android:host="www.youtube.com" android:pathPrefix="/watch" />
+                <data android:scheme="https" android:host="m.youtube.com" android:pathPrefix="/watch" />
+                <data android:scheme="http" android:host="m.youtube.com" android:pathPrefix="/watch" />
+                <data android:scheme="https" android:host="youtube.com" android:pathPrefix="/watch" />
+                <data android:scheme="http" android:host="youtube.com" android:pathPrefix="/watch" />
+                <data android:scheme="https" android:host="music.youtube.com" android:pathPrefix="/watch" />
+                <data android:scheme="https" android:host="youtu.be" />
+                <data android:scheme="http" android:host="youtu.be" />
+            </intent-filter>
         </activity>
 
         <!-- sensorLandscape : les DEUX sens du paysage, selon l'inclinaison.
@@ -42,6 +71,19 @@
         <activity
             android:name=".ui.HistoryActivity"
             android:screenOrientation="portrait" />
+
+        <!-- Le lecteur vit dans ce service, pas dans l'écran de lecture :
+             c'est ce qui permet au son de continuer quand l'écran s'éteint
+             ou qu'on quitte l'app. exported=false : seule l'app le pilote,
+             mais le système y accède pour la notification média. -->
+        <service
+            android:name=".player.PlaybackService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
 
     </application>
 
